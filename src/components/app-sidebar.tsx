@@ -9,6 +9,8 @@ import {
   NotepadText,
   Settings2,
   Trash2,
+  LibraryBig,
+  MessagesSquare
 } from "lucide-react";
 import * as React from "react";
 
@@ -27,7 +29,7 @@ import { NavWorkspaces } from "./nav-workspaces";
 const data = {
   teams: [
     {
-      name: "KijangBot",
+      name: "MCBot",
       logo: Command,
       plan: "Enterprise",
     },
@@ -44,20 +46,15 @@ const data = {
   ],
   navMain: [
     {
-      title: "Rewrite",
-      url: "#",
-      icon: NotebookPen,
-    },
-    {
-      title: "Summarisation",
-      url: "#",
-      icon: NotepadText,
-    },
-    {
-      title: "Translation",
-      url: "#",
-      icon: Languages,
+      title: "Chat",
+      url: "/",
+      icon: MessagesSquare,
       isActive: true,
+    },
+    {
+      title: "Knowledge Base",
+      url: "/knowledge-base",
+      icon: LibraryBig,
     },
   ],
   navSecondary: [

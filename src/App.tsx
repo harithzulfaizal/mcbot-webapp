@@ -13,8 +13,12 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ChatBox } from "./components/chat-bot";
+import KnowledgeBase from "./pages/knowledge-base";
+import { useLocation } from "react-router-dom";
 
 export default function Page() {
+  const location = useLocation();
+
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -27,7 +31,7 @@ export default function Page() {
               <BreadcrumbList>
                 <BreadcrumbItem>
                   <BreadcrumbPage className="line-clamp-1">
-                    KijangBot
+                    MCBot
                   </BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
@@ -37,11 +41,8 @@ export default function Page() {
             <NavActions />
           </div>
         </header>
-        {/* <div className="flex flex-1 flex-col gap-4 px-4 py-10">
-          <div className="mx-auto h-24 w-full max-w-3xl rounded-xl bg-muted/50" />
-          <div className="mx-auto h-full w-full max-w-3xl rounded-xl bg-muted/50" />
-        </div> */}
-        <ChatBox />
+        {location.pathname === "/" ? <ChatBox /> : null}
+        {location.pathname === "/knowledge-base" ? <KnowledgeBase /> : null}
       </SidebarInset>
     </SidebarProvider>
   );

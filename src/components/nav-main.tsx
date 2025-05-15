@@ -1,4 +1,5 @@
 import { type LucideIcon } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import {
   SidebarMenu,
@@ -21,10 +22,10 @@ export function NavMain({
       {items.map((item) => (
         <SidebarMenuItem key={item.title}>
           <SidebarMenuButton asChild isActive={item.isActive}>
-            <a href={item.url}>
+            <Link to={item.url}>
               <item.icon />
               <span>{item.title}</span>
-            </a>
+            </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
       ))}
