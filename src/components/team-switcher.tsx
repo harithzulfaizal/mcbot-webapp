@@ -42,8 +42,8 @@ export function TeamSwitcher({
               </div>
               <span className="truncate font-semibold">{activeTeam.name}</span>
               <ChevronDown className="opacity-50" /> */}
-              <img src="/kijang.png" alt="Kijang" />
-            </SidebarMenuButton>
+                <img src="/mcbot.png" alt="Kijang" className="pt-1" />
+              </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
             className="w-64 rounded-lg"
