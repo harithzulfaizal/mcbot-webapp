@@ -1,3 +1,12 @@
+# TODO
+
+- chat message bubble, add thinking/agentic process view
+- chat session state management + api
+- user session state management + api
+- pdf viewer?
+
+---
+
 # KijangBot Web Application
 
 This repository contains the source code for the KijangBot web application, built using **React**, **TypeScript**, and **Vite**. The project is designed to provide a modern, responsive, and interactive user interface with features like chat functionality, sidebar navigation, and prompt-based interactions.
