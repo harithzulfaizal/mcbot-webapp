@@ -31,15 +31,21 @@ export default function Page() {
               <BreadcrumbList>
                 <BreadcrumbItem>
                   <BreadcrumbPage className="line-clamp-1">
-                    MCBot
+                    {location.pathname === "/"
+                      ? "Chat"
+                      : location.pathname === "/knowledge-base"
+                      ? "Knowledge Base"
+                      : ""}
                   </BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
           </div>
-          <div className="ml-auto px-3">
-            <NavActions />
-          </div>
+            {location.pathname === "/" && (
+            <div className="ml-auto px-3">
+              <NavActions />
+            </div>
+            )}
         </header>
         {location.pathname === "/" ? <ChatBox /> : null}
         {location.pathname === "/knowledge-base" ? <KnowledgeBase /> : null}

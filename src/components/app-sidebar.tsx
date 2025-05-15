@@ -55,6 +55,7 @@ const data = {
       title: "Knowledge Base",
       url: "/knowledge-base",
       icon: LibraryBig,
+      isActive: true,
     },
   ],
   navSecondary: [

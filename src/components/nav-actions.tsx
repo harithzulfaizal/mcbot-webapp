@@ -100,14 +100,14 @@ export function NavActions() {
   const [isOpen, setIsOpen] = React.useState(false);
 
   React.useEffect(() => {
-    setIsOpen(true);
+    setIsOpen(false);
   }, []);
 
   return (
     <div className="flex items-center gap-2 text-sm">
-      <Button variant="outline" size="icon" className="h-7 w-28">
+      <Button variant="outline" size="icon" className="h-7 w-45">
         <MessageSquareMore />
-        New Chat
+        New Conversation
       </Button>
 
       <Popover open={isOpen} onOpenChange={setIsOpen}>

@@ -1,3 +1,4 @@
+// prompt-card.tsx
 type PromptCardProps = {
   title: string;
   description: string;
@@ -41,13 +42,17 @@ export function PromptCards({
   ];
 
   return (
-    <div className="flex flex-wrap gap-4 px-4 pb-4">
+    // MODIFIED: Removed "center", "bottom-0". Added "justify-center".
+    // This div now arranges the cards with a gap, allows them to wrap,
+    // and centers them horizontally within its own bounding box.
+    // The padding (px-4 pb-4) gives some space around the group of cards.
+    <div className="flex flex-wrap justify-center gap-4 px-4 pb-4">
       {prompts.map((item, idx) => (
         <PromptCard
           key={idx}
           title={item.title}
           description={item.description}
-          onClick={() => onSelect(item.description)}
+          onClick={() => onSelect(item.description)} // Or item.title if you prefer sending that
         />
       ))}
     </div>
