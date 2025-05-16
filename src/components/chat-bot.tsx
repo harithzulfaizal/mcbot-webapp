@@ -4,6 +4,8 @@ import { ChatInput } from "./chat-input";
 import { PromptCards } from "./prompt-card";
 import ReactMarkdown from 'react-markdown'; // Import ReactMarkdown
 import remarkGfm from 'remark-gfm';       // Import remark-gfm for GitHub Flavored Markdown
+import { UserMessage } from "./user-message";
+import { BotMessage } from "./bot-message";
 
 type Message = {
   id: number;
@@ -62,24 +64,14 @@ export function ChatBox() {
       >
         {messages.map((msg) => {
           const isUser = msg.sender === "user";
-          // Base classes for padding, common to both message types
-          let messageClasses = "px-4 py-2";
-
-          if (isUser) {
-            messageClasses +=
-              " ml-auto max-w-[60%] bg-primary text-primary-foreground rounded-tl-lg rounded-bl-lg rounded-br-lg";
-          } else {
-            messageClasses +=
-              " mr-auto max-w-[100%] bg-gradient-to-b from-muted to-transparent text-foreground rounded-lg"; // Adjusted bot max-width for potentially wider markdown content
-          }
           return (
-            <div key={msg.id} className={messageClasses}>
-              {/* MODIFIED: Use ReactMarkdown to render content */}
-              {/* Add a wrapper div with 'prose' for better markdown styling if you have @tailwindcss/typography */}
-              <div className="prose prose-sm dark:prose-invert max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {msg.content}
-                </ReactMarkdown>
+            <div key={msg.id} className="flex"> {/* Outer div for full width */}
+              <div className={isUser ? "max-w-[60%] ml-auto" : "mr-auto"}> {/* Inner div for alignment and max width */}
+                {isUser ? (
+                  <UserMessage content={msg.content} />
+                ) : (
+                  <BotMessage content={msg.content} thinking="Thinking process/agentic layers go here."/>
+                )}
               </div>
             </div>
           );
@@ -99,7 +91,7 @@ export function ChatBox() {
       )}
 
       {/* ChatInput container */}
-      <div className="sticky p-3 bottom-0 backdrop-blur-sm z-10">
+      <div className="sticky p-3 pb-5 bottom-0 backdrop-blur-sm z-10">
         <ChatInput
           onSendMessage={(msg) => {
             sendMessage(msg);
@@ -108,6 +100,9 @@ export function ChatBox() {
             console.log("Attach file clicked");
           }}
         />
+        <p className="text-xs text-muted-foreground mt-2 text-center">
+          AI generated responses may be incorrect or misleading. Please verify important information.
+        </p>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 # TODO
 
-- chat message bubble, add thinking/agentic process view
+- ~~chat message bubble, add thinking/agentic process view~~
 - chat session state management + api
 - user session state management + api
 - pdf viewer?
