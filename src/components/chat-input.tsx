@@ -23,7 +23,7 @@ export function ChatInput({
   };
 
   return (
-    <div className="flex items-center gap-2 rounded-full px-4 py-2 shadow-sm bg-white w-full">
+    <div className="flex items-center gap-2 rounded-full px-4 py-2 shadow-sm bg-transparent w-full">
       {/* The Input component below is the modified one that renders a textarea
         and handles auto-resizing and Enter/Shift+Enter.
       */}
@@ -32,7 +32,7 @@ export function ChatInput({
         // Apply specific styling for ChatInput.
         // !py-2 results in 0.5rem (8px) padding top/bottom.
         // Combined with text-sm (20px line-height), one line is 36px tall.
-        className="flex-1 items-center !border-none !shadow-none !ring-0 !bg-transparent text-sm placeholder:text-muted-foreground px-3 !py-2"
+        className="flex-1 items-center !border-none !shadow-none !ring-0 bg-transparent text-sm placeholder:text-muted-foreground px-3 !py-2"
         value={message}
         onChange={(e) => setMessage(e.target.value)}
         onEnterSubmit={handleSendMessageAndClear}

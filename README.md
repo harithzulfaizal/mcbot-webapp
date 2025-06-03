@@ -1,6 +1,7 @@
 # TODO
 
 - ~~chat message bubble, add thinking/agentic process view~~
+- ~integrate chat with backend~, put agent intermediaries in thinking with proper formatting, chatbox area is fucked btw when text are long, vertical scroll bar uggo
 - chat session state management + api
 - user session state management + api
 - pdf viewer?

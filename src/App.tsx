@@ -1,6 +1,6 @@
 // src/App.tsx
 import React, { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom"; // Added useNavigate
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { NavActions } from "@/components/nav-actions";
@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/sidebar";
 import { ChatBox } from "./components/chat-bot";
 import KnowledgeBase from "./pages/knowledge-base";
-import LoginPage from "./pages/LoginPage"; // Import the LoginPage
+import LoginPage from "./pages/LoginPage";
 
 // Define a type for the user state
 type User = {
@@ -28,42 +28,36 @@ type User = {
 
 export default function App() {
   const location = useLocation();
-  const navigate = useNavigate(); // For redirecting after login/logout
+  const navigate = useNavigate();
 
-  // State to hold the current user. null if not logged in.
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  // State to manage initial loading (e.g., checking for a persisted session)
   const [isLoading, setIsLoading] = useState(true);
 
-  // Simulate checking for an existing session on component mount
   useEffect(() => {
-    // In a real app, you might check localStorage or make an API call
     const storedUser = localStorage.getItem("kijangBotUser");
     if (storedUser) {
       try {
         setCurrentUser(JSON.parse(storedUser));
       } catch (e) {
         console.error("Failed to parse stored user:", e);
-        localStorage.removeItem("kijangBotUser"); // Clear corrupted data
+        localStorage.removeItem("kijangBotUser");
       }
     }
-    setIsLoading(false); // Finished loading
+    setIsLoading(false);
   }, []);
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
-    localStorage.setItem("kijangBotUser", JSON.stringify(user)); // Persist user
-    // No explicit navigation needed here if App component re-renders to show main content
+    localStorage.setItem("kijangBotUser", JSON.stringify(user));
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem("kijangBotUser"); // Clear persisted user
-    navigate("/"); // Navigate to a common route, LoginPage will be shown due to currentUser being null
+    localStorage.removeItem("kijangBotUser");
+    navigate("/");
   };
 
   if (isLoading) {
-    // Basic loading state
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-900">
         <p className="text-white text-xl">Loading application...</p>
@@ -72,16 +66,11 @@ export default function App() {
   }
 
   if (!currentUser) {
-    // If no user is logged in, render the LoginPage
-    // LoginPage itself doesn't need access to routing context like useLocation directly
-    // as it's rendered outside the main app structure that uses it.
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
 
-  // If user is logged in, render the main application
   return (
     <SidebarProvider>
-      {/* Pass currentUser and handleLogout to AppSidebar */}
       <AppSidebar currentUser={currentUser} onLogout={handleLogout} />
       <SidebarInset>
         <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background">
@@ -96,7 +85,7 @@ export default function App() {
                       ? "Chat"
                       : location.pathname === "/knowledge-base"
                       ? "Knowledge Base"
-                      : "Chat"} {/* Default to Chat if path is unknown */}
+                      : "Chat"}
                   </BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
@@ -108,15 +97,14 @@ export default function App() {
             </div>
           )}
         </header>
-        {/* Conditional rendering of pages based on path */}
-        {location.pathname === "/" ? <ChatBox /> : null}
+        {/* Pass currentUser to ChatBox */}
+        {location.pathname === "/" ? <ChatBox currentUser={currentUser} /> : null}
         {location.pathname === "/knowledge-base" ? <KnowledgeBase /> : null}
-        {/* Add a fallback for unknown paths within the logged-in app if desired */}
         {location.pathname !== "/" && location.pathname !== "/knowledge-base" && (
-           <div className="p-4">
-             <h2 className="text-lg font-semibold">Page not found</h2>
-             <p>The page you are looking for does not exist within the KijangBot application.</p>
-           </div>
+          <div className="p-4">
+            <h2 className="text-lg font-semibold">Page not found</h2>
+            <p>The page you are looking for does not exist within the KijangBot application.</p>
+          </div>
         )}
       </SidebarInset>
     </SidebarProvider>
