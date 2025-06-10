@@ -66,7 +66,7 @@ export function ChatBox({ currentUser }: ChatBoxProps) {
 
     eventSource.onopen = () => {
       console.log("SSE connection established to http://localhost:8000.");
-      // setIsBotTyping(false); // Or keep true if waiting for first message
+      setIsBotTyping(false); // Set to false after connection is established to show prompt cards
     };
 
     eventSource.onmessage = (event) => {
