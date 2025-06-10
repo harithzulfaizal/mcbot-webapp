@@ -198,7 +198,7 @@ export function ChatBox({ currentUser }: ChatBoxProps) {
   
   return (
     <div className="relative w-full h-[calc(100vh-3.5rem)]">
-        <main className="flex flex-col w-full max-w-4xl pt-10 pb-44 mx-auto h-full">
+        <main className="flex flex-col w-full max-w-4xl pt-10 mx-auto h-full">
             <div className="flex-1 overflow-y-auto pr-4 -mr-4 pl-4 -ml-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/30 scrollbar-thumb-rounded-full">
                 <Messages messages={messages} isBotTyping={isBotTyping} />
                 <div ref={messagesEndRef} />
