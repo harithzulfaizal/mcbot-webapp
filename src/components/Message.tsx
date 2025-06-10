@@ -24,7 +24,7 @@ function PureMessage({
     >
       <div
          className={cn(
-            'flex flex-col max-w-[85%]',
+            'flex flex-col max-w-[100%]',
             message.sender === 'user' ? 'items-end' : 'items-start'
         )}
       >

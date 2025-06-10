@@ -13,7 +13,7 @@ function PureMessages({
   isBotTyping: boolean;
 }) {
   return (
-    <section className="flex flex-col space-y-6">
+    <section className="flex flex-col pt-5 space-y-6">
       {messages.map((message, index) => (
         <Message
           key={message.id}
