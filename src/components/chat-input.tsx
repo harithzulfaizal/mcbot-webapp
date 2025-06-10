@@ -1,70 +1,92 @@
-// ChatInput.tsx
+// src/components/chat-input.tsx
 import { Button } from "@/components/ui/button";
-// Ensure this path points to your modified Input.tsx
-import { Input } from "@/components/ui/input";
-import { FilePlus2, SendHorizontal } from "lucide-react";
-import { useState } from "react";
+import { Textarea } from "@/components/ui/textarea"; // Using the new Textarea component
+import { StopIcon } from "@/components/ui/icons";
+import { ArrowUpIcon } from "lucide-react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 
-export function ChatInput({
-  onSendMessage,
-  onAttachFile,
-}: {
-  onSendMessage: (msg: string) => void;
-  onAttachFile?: () => void;
-}) {
-  const [message, setMessage] = useState("");
+interface ChatInputProps {
+    onSendMessage: (msg: string) => void;
+    isStreaming: boolean;
+    stopStreaming: () => void;
+}
 
-  const handleSendMessageAndClear = () => {
-    if (!message.trim()) return;
-    onSendMessage(message.trim());
-    setMessage("");
-    // The Input component's useEffect will handle resetting its height
-    // when the `value` (message) becomes empty.
-  };
+export function ChatInput({ onSendMessage, isStreaming, stopStreaming }: ChatInputProps) {
+    const [message, setMessage] = useState("");
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  return (
-    <div className="flex items-center gap-2 rounded-full px-4 py-2 shadow-sm bg-transparent w-full">
-      {/* The Input component below is the modified one that renders a textarea
-        and handles auto-resizing and Enter/Shift+Enter.
-      */}
-      <Input
-        placeholder="Ask me anything"
-        // Apply specific styling for ChatInput.
-        // !py-2 results in 0.5rem (8px) padding top/bottom.
-        // Combined with text-sm (20px line-height), one line is 36px tall.
-        className="flex-1 items-center !border-none !shadow-none !ring-0 bg-transparent text-sm placeholder:text-muted-foreground px-3 !py-2"
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        onEnterSubmit={handleSendMessageAndClear}
-        initialHeight="36px"
-        maxHeight={50} 
-      />
+    const adjustHeight = useCallback(() => {
+        const textarea = textareaRef.current;
+        if (textarea) {
+            textarea.style.height = 'auto'; // Reset height
+            const newHeight = Math.max(72, Math.min(textarea.scrollHeight, 200));
+            textarea.style.height = `${newHeight}px`;
+        }
+    }, []);
+    
+    useEffect(() => {
+        adjustHeight();
+    }, [message, adjustHeight]);
 
-      <button
-        onClick={onAttachFile}
-        className="text-muted-foreground hover:text-primary p-1.5 rounded-full transition-colors"
-        type="button"
-        aria-label="Attach file"
-      >
-        <FilePlus2 className="h-4 w-4" />
-      </button>
 
-      {/* This separator has a fixed height. If the input grows to 3 lines (108px),
-        this h-6 (24px) separator might look short. Consider alternatives if this is an issue:
-        - Making its height dynamic.
-        - Using `align-self: stretch` if its direct parent was also a flex container oriented appropriately.
-        - Removing it or integrating separation differently.
-      */}
-      <div className="h-6 border-l" />
+    const handleSendMessageAndClear = () => {
+        if (!message.trim() || isStreaming) return;
+        onSendMessage(message.trim());
+        setMessage("");
+        // Reset height after sending
+        const textarea = textareaRef.current;
+        if(textarea) {
+            textarea.style.height = '72px';
+        }
+    };
 
-      <Button
-        size="icon"
-        className="bg-[#3A5CCC] hover:bg-[#324EB3] text-white rounded-full"
-        onClick={handleSendMessageAndClear}
-        aria-label="Send message"
-      >
-        <SendHorizontal className="h-4 w-4" />
-      </Button>
-    </div>
-  );
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            handleSendMessageAndClear();
+        }
+    };
+
+    return (
+        <div className="fixed bottom-0 w-full max-w-4xl">
+            <div className="bg-secondary rounded-t-[20px] p-2 pb-0 w-full shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.1)] dark:shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.4)]">
+                <div className="relative">
+                    <div className="flex flex-col">
+                        <Textarea
+                            ref={textareaRef}
+                            id="chat-input"
+                            value={message}
+                            onChange={(e) => setMessage(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder="Ask me anything..."
+                            className="w-full pl-4 pr-14 py-3 border-none shadow-none dark:bg-transparent placeholder:text-muted-foreground resize-none focus-visible:ring-0 focus-visible:ring-offset-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/30 scrollbar-thumb-rounded-full min-h-[72px]"
+                            aria-label="Chat message input"
+                        />
+                        <div className="h-14 flex items-center justify-end px-2">
+                            {isStreaming ? (
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={stopStreaming}
+                                    aria-label="Stop generating response"
+                                >
+                                    <StopIcon size={20} />
+                                </Button>
+                            ) : (
+                                <Button
+                                    onClick={handleSendMessageAndClear}
+                                    variant="default"
+                                    size="icon"
+                                    disabled={!message.trim()}
+                                    aria-label="Send message"
+                                >
+                                    <ArrowUpIcon size={18} />
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 }
