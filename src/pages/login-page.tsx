@@ -46,7 +46,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         <div className="text-center">
           <Command className="mx-auto h-12 w-12 text-primary" /> {/* Using Command as a placeholder logo */}
           <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-white">
-            Sign in to KijangBot
+            Sign in to MC Bot
           </h2>
         </div>
         <form

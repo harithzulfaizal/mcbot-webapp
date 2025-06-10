@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/sidebar";
 import { ChatBox } from "./components/chat-bot";
 import KnowledgeBase from "./pages/knowledge-base";
-import LoginPage from "./pages/LoginPage";
+import LoginPage from "./pages/login-page";
 
 // Define a type for the user state
 type User = {

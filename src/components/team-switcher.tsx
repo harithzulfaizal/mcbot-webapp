@@ -36,13 +36,13 @@ export function TeamSwitcher({
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <SidebarMenuButton className="px-1.5 mb-5 h-10">
+            <SidebarMenuButton className="px-1.5 mb-5 h-16">
               {/* <div className="flex aspect-square size-5 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
                 <activeTeam.logo className="size-3" />
               </div>
               <span className="truncate font-semibold">{activeTeam.name}</span>
               <ChevronDown className="opacity-50" /> */}
-                <img src="/mcbot.png" alt="Kijang" className="pt-1" />
+                <img src="/mcbot2.png" alt="Kijang" className="pt-1" />
               </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
