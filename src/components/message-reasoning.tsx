@@ -1,6 +1,6 @@
 // src/components/MessageReasoning.tsx
 import { memo, useState } from 'react';
-import MemoizedMarkdown from './MemoizedMarkdown';
+import MemoizedMarkdown from './memoized-markdown';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
 function PureMessageReasoning({

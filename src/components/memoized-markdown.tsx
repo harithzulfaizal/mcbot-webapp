@@ -85,8 +85,8 @@ const MemoizedMarkdown = memo(({ content, id, size = 'default' }: { content: str
 
     const proseClasses =
         size === 'small'
-            ? 'prose prose-sm dark:prose-invert break-words max-w-none w-full prose-p:my-2 prose-code:before:content-none prose-code:after:content-none'
-            : 'prose prose-base dark:prose-invert break-words max-w-none w-full prose-p:leading-relaxed prose-code:before:content-none prose-code:after:content-none';
+            ? 'prose prose-sm dark:prose-invert break-words max-w-none w-full prose-p:my-2 prose-code:before:content-none prose-code:after:content-none whitespace-pre-wrap'
+            : 'prose prose-base dark:prose-invert break-words max-w-none w-full prose-p:leading-relaxed prose-code:before:content-none prose-code:after:content-none whitespace-pre-wrap';
 
     return (
         <MarkdownSizeContext.Provider value={size}>

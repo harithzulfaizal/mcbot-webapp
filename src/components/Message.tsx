@@ -1,11 +1,11 @@
 // src/components/Message.tsx
 import { memo } from 'react';
-import MemoizedMarkdown from '@/components/MemoizedMarkdown';
+import MemoizedMarkdown from '@/components/memoized-markdown';
 import { cn } from '@/lib/utils';
-import { Message as UIMessage } from '@/components/chat-bot'; // Adjusted import
+import { Message as UIMessage } from '@/components/chat-box'; // Adjusted import
 import equal from 'fast-deep-equal';
-import MessageControls from './MessageControls';
-import MessageReasoning from './MessageReasoning';
+import MessageControls from './message-controls';
+import MessageReasoning from './message-reasoning';
 
 function PureMessage({
   message,
@@ -46,7 +46,7 @@ function PureMessage({
         </div>
 
         {/* Message controls */}
-        {!isStreaming && (
+        {!isStreaming && message.sender === 'bot' && (
              <MessageControls
                 message={message}
                 content={message.content}

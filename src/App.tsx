@@ -2,21 +2,21 @@
 import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { AppSidebar } from "@/components/app-sidebar";
-import { NavActions } from "@/components/nav-actions";
+import { AppSidebar } from "./components/app-sidebar";
+import { NavActions } from "./components/nav-actions";
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbList,
   BreadcrumbPage,
-} from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
+} from "./components/ui/breadcrumb";
+import { Separator } from "./components/ui/separator";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
-} from "@/components/ui/sidebar";
-import { ChatBox } from "./components/chat-bot";
+} from "./components/ui/sidebar";
+import { ChatBox } from "./components/chat-box";
 import KnowledgeBase from "./pages/knowledge-base";
 import LoginPage from "./pages/login-page";
 
@@ -97,7 +97,7 @@ export default function App() {
             </div>
           )}
         </header>
-        {/* Pass currentUser to ChatBox */}
+        {/* The ChatBox now controls its own width and can be placed directly */}
         {location.pathname === "/" ? <ChatBox currentUser={currentUser} /> : null}
         {location.pathname === "/knowledge-base" ? <KnowledgeBase /> : null}
         {location.pathname !== "/" && location.pathname !== "/knowledge-base" && (

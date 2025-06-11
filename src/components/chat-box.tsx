@@ -1,9 +1,7 @@
-// src/components/chat-bot.tsx
 import React, { useEffect, useRef, useState } from "react";
 import { ChatInput } from "./chat-input";
-import Messages from "./Messages"; // New Messages component
+import Messages from "./messages"; 
 
-// Define the structure of a message in the chat
 export type Message = {
   id: string;
   sender: "user" | "bot";
@@ -14,7 +12,6 @@ export type Message = {
   createdAt?: Date; // Added for consistency with MessageControls
 };
 
-// Define the structure for the current user prop
 type User = {
   name: string;
   email: string;
@@ -33,13 +30,17 @@ type AgentMessageOutput = {
   type: string;
 };
 
+import { PromptCards } from "./prompt-card";
+
 export function ChatBox({ currentUser }: ChatBoxProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null); // Added useRef for EventSource
 
   const [userId, setUserId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isBotTyping, setIsBotTyping] = useState(false);
+  const [showPrompts, setShowPrompts] = useState(true);
 
   useEffect(() => {
     if (currentUser && currentUser.email) {
@@ -49,26 +50,25 @@ export function ChatBox({ currentUser }: ChatBoxProps) {
   }, [currentUser]);
 
   const stopStreaming = () => {
-    // This is a placeholder. In a real scenario, you'd have a way to close the EventSource
-    // or send a signal to the backend to stop the stream.
-    console.log("Stop streaming requested.");
-    setIsBotTyping(false);
+    console.log("Stop streaming requested (keeping SSE connection alive).");
+    setIsBotTyping(false); 
   }
 
   useEffect(() => {
     if (!userId || !sessionId) return;
 
     console.log(`Setting up SSE for userId: ${userId}, sessionId: ${sessionId}`);
-    const eventSource = new EventSource(`http://localhost:8000/api/chat/events/${userId}/${sessionId}`);
+    const newEventSource = new EventSource(`http://localhost:8000/api/chat/events/${userId}/${sessionId}`);
+    eventSourceRef.current = newEventSource; // Store EventSource in ref
 
-    eventSource.onopen = () => {
+    newEventSource.onopen = () => {
       console.log("SSE connection established to http://localhost:8000.");
     };
     
     let currentMessageId: string | null = null;
     let accumulatedContent = "";
     
-    eventSource.onmessage = (event) => {
+    newEventSource.onmessage = (event) => {
         setIsBotTyping(true);
         try {
             const parsedData: AgentMessageOutput = JSON.parse(event.data);
@@ -105,6 +105,13 @@ export function ChatBox({ currentUser }: ChatBoxProps) {
                 );
             }
 
+            // Check if the message type is ModelResponse to stop streaming
+            if (parsedData.type === 'ModelResponse') {
+                console.log("ModelResponse received, re-enabling input.");
+                stopStreaming(); 
+                handleStreamEnd(); // Ensure UI updates correctly after stopping
+            }
+
         } catch (error) {
             console.error("Failed to parse SSE message data:", error);
             const errorBotMessage: Message = {
@@ -123,27 +130,30 @@ export function ChatBox({ currentUser }: ChatBoxProps) {
     // A custom event or a specific message content can signal the end of a stream
     // For now, we'll assume a new message starts a new stream, and errors or closure end it.
     const handleStreamEnd = () => {
-        console.log("Stream ended.");
-        setIsBotTyping(false);
+        console.log("Stream ended (UI update).");
+        setIsBotTyping(false); // Ensure input is enabled
         currentMessageId = null; // Reset for the next message
+        // No need to close eventSourceRef.current here as stopStreaming handles it or the natural close does.
     };
 
-    eventSource.onerror = (error) => {
+    newEventSource.onerror = (error) => {
       console.error("SSE connection error:", error);
-      const errorBotMessage: Message = {
-        id: crypto.randomUUID(),
-        sender: "bot",
-        content: "Connection to the chat service was lost or could not be established.",
-        createdAt: new Date(),
-      };
-      setMessages((prevMessages) => [...prevMessages, errorBotMessage]);
+      // Do not add error message to chat messages, just log to console
       handleStreamEnd();
-      eventSource.close();
+      // newEventSource.close(); // stopStreaming or the return function will handle this
+      // if (eventSourceRef.current === newEventSource) { // Only close if it's the current one
+      //   newEventSource.close();
+      //   eventSourceRef.current = null;
+      // }
     };
 
     return () => {
-      console.log("Closing SSE connection.");
-      eventSource.close();
+      console.log("Closing SSE connection in cleanup.");
+      // newEventSource.close();
+      if (eventSourceRef.current === newEventSource) { // Ensure we only close the one created in this effect
+        newEventSource.close(); // Close SSE on component unmount or dependency change
+        eventSourceRef.current = null;
+      }
       handleStreamEnd();
     };
   }, [userId, sessionId]);
@@ -203,6 +213,15 @@ export function ChatBox({ currentUser }: ChatBoxProps) {
                 <Messages messages={messages} isBotTyping={isBotTyping} />
                 <div ref={messagesEndRef} />
             </div>
+            {showPrompts && messages.filter(msg => msg.content !== "Connection to the chat service was lost or could not be established.").length === 0 && !isBotTyping && (
+            <div className="flex justify-center py-4">
+              <PromptCards
+                onSelect={(promptText) => {
+                  sendMessage(promptText);
+                }}
+              />
+            </div>
+            )}
             <ChatInput 
                 onSendMessage={sendMessage}
                 isStreaming={isBotTyping}
