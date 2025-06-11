@@ -227,6 +227,9 @@ export function ChatBox({ currentUser }: ChatBoxProps) {
                 isStreaming={isBotTyping}
                 stopStreaming={stopStreaming}
             />
+            <p className="text-xs text-muted-foreground py-8 text-center">
+              AI generated responses may be incorrect or misleading. Please verify important information.
+            </p>
         </main>
     </div>
   );

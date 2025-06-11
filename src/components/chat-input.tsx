@@ -19,7 +19,7 @@ export function ChatInput({ onSendMessage, isStreaming, stopStreaming }: ChatInp
         const textarea = textareaRef.current;
         if (textarea) {
             textarea.style.height = 'auto'; // Reset height
-            const newHeight = Math.max(72, Math.min(textarea.scrollHeight, 200));
+            const newHeight = Math.max(36, Math.min(textarea.scrollHeight, 200));
             textarea.style.height = `${newHeight}px`;
         }
     }, []);
@@ -36,7 +36,7 @@ export function ChatInput({ onSendMessage, isStreaming, stopStreaming }: ChatInp
         // Reset height after sending
         const textarea = textareaRef.current;
         if(textarea) {
-            textarea.style.height = '72px';
+            textarea.style.height = '36px';
         }
     };
 
@@ -48,44 +48,35 @@ export function ChatInput({ onSendMessage, isStreaming, stopStreaming }: ChatInp
     };
 
     return (
-        <div className="fixed bottom-0 w-full max-w-4xl">
-            <div className="bg-secondary rounded-t-[20px] p-2 pb-0 w-full shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.1)] dark:shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.4)]">
-                <div className="relative">
-                    <div className="flex flex-col">
-                        <Textarea
-                            ref={textareaRef}
-                            id="chat-input"
-                            value={message}
-                            onChange={(e) => setMessage(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder="Ask me anything..."
-                            className="w-full pl-4 pr-14 py-3 border-none shadow-none dark:bg-transparent placeholder:text-muted-foreground resize-none focus-visible:ring-0 focus-visible:ring-offset-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/30 scrollbar-thumb-rounded-full min-h-[72px]"
-                            aria-label="Chat message input"
-                        />
-                        <div className="h-14 flex items-center justify-end px-2">
-                            {isStreaming ? (
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={stopStreaming}
-                                    aria-label="Stop generating response"
-                                >
-                                    <StopIcon size={20} />
-                                </Button>
-                            ) : (
-                                <Button
-                                    onClick={handleSendMessageAndClear}
-                                    variant="default"
-                                    size="icon"
-                                    disabled={!message.trim()}
-                                    aria-label="Send message"
-                                >
-                                    <ArrowUpIcon size={18} />
-                                </Button>
-                            )}
-                        </div>
-                    </div>
-                </div>
+        <div className="fixed bottom-15 w-full max-w-4xl">
+            <div className="flex items-center gap-2 rounded-full px-4 py-2 shadow-sm bg-opacity-80 backdrop-blur-sm w-full">
+                <Textarea
+                    ref={textareaRef}
+                    id="chat-input"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Ask me anything..."
+                    rows={1}
+                    className="flex-1 items-center !border-none !shadow-none !ring-0 bg-transparent text-sm placeholder:text-muted-foreground px-3 !py-0 !min-h-[36px] leading-[36px] resize-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                    aria-label="Chat message input"
+                />
+                {isStreaming ? (
+                    <Button variant="outline" size="icon" onClick={stopStreaming} aria-label="Stop generating response">
+                        <StopIcon size={20} />
+                    </Button>
+                ) : (
+                    <Button
+                        onClick={handleSendMessageAndClear}
+                        variant="default"
+                        size="icon"
+                        disabled={!message.trim()}
+                        aria-label="Send message"
+                        className="bg-[#3A5CCC] hover:bg-[#324EB3] text-white rounded-full"
+                    >
+                        <ArrowUpIcon size={18} />
+                    </Button>
+                )}
             </div>
         </div>
     );
