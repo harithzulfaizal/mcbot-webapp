@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ChatInput } from "./chat-input";
-import Messages from "./messages"; 
+import Messages from "./Messages"; 
 
 export type Message = {
   id: string;

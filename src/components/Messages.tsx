@@ -1,6 +1,6 @@
 // src/components/Messages.tsx
 import { memo } from 'react';
-import Message from './message';
+import Message from './Message';
 import { Message as UIMessage } from '@/components/chat-box'; // Adjusted import path
 import equal from 'fast-deep-equal';
 import { Skeleton } from './ui/skeleton';
