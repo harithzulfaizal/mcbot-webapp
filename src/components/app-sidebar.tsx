@@ -128,8 +128,8 @@ export function AppSidebar({
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
-          <NavFavorites favorites={data.favorites} />
-          <NavWorkspaces workspaces={data.workspaces} />
+          {/* <NavFavorites favorites={data.favorites} />
+          <NavWorkspaces workspaces={data.workspaces} /> */}
         </div>
       </SidebarContent>
 

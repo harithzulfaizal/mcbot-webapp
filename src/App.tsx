@@ -75,12 +75,19 @@ export default function App() {
   };
 
   const handleDeleteSession = (index: number) => {
-    setSessions((prev) => prev.filter((_, i) => i !== index));
-    setCurrentSessionIndex((prev) => {
-      if (index === prev) return 0;
-      if (index < prev) return prev - 1;
-      return prev;
-    });
+    const updated = sessions.filter((_, i) => i !== index);
+    if (updated.length === 0) {
+      const defaultSession = { id: crypto.randomUUID(), name: "Chat 0" };
+      setSessions([defaultSession]);
+      setCurrentSessionIndex(0);
+    } else {
+      setSessions(updated);
+      setCurrentSessionIndex((prev) => {
+        if (index === prev) return 0;
+        if (index < prev) return prev - 1;
+        return prev;
+      });
+    }
   };
 
   if (isLoading) {
@@ -132,17 +139,18 @@ export default function App() {
           )}
         </header>
         {/* The ChatBox now controls its own width and can be placed directly */}
-        {location.pathname === "/" ? (
+        {location.pathname === "/" && (
           <ChatBox
             key={sessions[currentSessionIndex].id}
+            sessionId={sessions[currentSessionIndex].id}
             currentUser={currentUser}
           />
-        ) : null}
+        )}
         {location.pathname === "/knowledge-base" ? <KnowledgeBase /> : null}
         {location.pathname !== "/" && location.pathname !== "/knowledge-base" && (
           <div className="p-4">
             <h2 className="text-lg font-semibold">Page not found</h2>
-            <p>The page you are looking for does not exist within the KijangBot application.</p>
+            <p>The page you are looking for does not exist within the MC Bot application.</p>
           </div>
         )}
       </SidebarInset>

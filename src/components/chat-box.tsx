@@ -19,6 +19,7 @@ type User = {
 
 interface ChatBoxProps {
   currentUser: User | null;
+  sessionId: string;
 }
 
 // Expected structure for data coming from SSE
@@ -32,20 +33,26 @@ type AgentMessageOutput = {
 
 import { PromptCards } from "./prompt-card";
 
-export function ChatBox({ currentUser }: ChatBoxProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const saved = localStorage.getItem(sessionId);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {}
+    }
+    return [];
+  });
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null); // Added useRef for EventSource
 
   const [userId, setUserId] = useState<string | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
   const [isBotTyping, setIsBotTyping] = useState(false);
   const [showPrompts, setShowPrompts] = useState(true);
 
   useEffect(() => {
     if (currentUser && currentUser.email) {
       setUserId(currentUser.email);
-      setSessionId(crypto.randomUUID());
     }
   }, [currentUser]);
 
@@ -149,16 +156,23 @@ export function ChatBox({ currentUser }: ChatBoxProps) {
 
     return () => {
       console.log("Closing SSE connection in cleanup.");
-      // newEventSource.close();
-      if (eventSourceRef.current === newEventSource) { // Ensure we only close the one created in this effect
-        newEventSource.close(); // Close SSE on component unmount or dependency change
+      if (eventSourceRef.current === newEventSource) {
+        newEventSource.close();
         eventSourceRef.current = null;
       }
       handleStreamEnd();
     };
   }, [userId, sessionId]);
 
+ // Persist messages per session
+ useEffect(() => {
+   if (messages.length > 0) {
+     localStorage.setItem(sessionId, JSON.stringify(messages));
+   }
+ }, [messages, sessionId]);
+
   const sendMessage = async (input: string) => {
+    // After sending, messages will be persisted by effect
     if (!input.trim() || !userId || !sessionId) return;
 
     const userMessage: Message = {
