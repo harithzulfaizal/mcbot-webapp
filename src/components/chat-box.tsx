@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChatInput } from "./chat-input";
 import Messages from "./messages"; 
 
@@ -48,7 +48,7 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [isBotTyping, setIsBotTyping] = useState(false);
-  const [showPrompts, setShowPrompts] = useState(true);
+  const [showPrompts] = useState(true);
 
   useEffect(() => {
     if (currentUser && currentUser.email) {

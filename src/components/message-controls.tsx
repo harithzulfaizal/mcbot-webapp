@@ -3,10 +3,10 @@ import { useState } from 'react';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
 import { Check, Copy } from 'lucide-react';
-import { UIMessage } from '@/components/chat-box'; // Adjusted import path
+import { Message } from '@/components/chat-box'; // Adjusted import path
 
 interface MessageControlsProps {
-  message: UIMessage;
+  message: Message;
   content: string;
 }
 

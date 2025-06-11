@@ -5,12 +5,6 @@ import { Input } from '@/components/ui/input'; // Assuming this is your custom a
 import { Label } from '@/components/ui/label'; // You might need to create this or use a simple <label>
 import { Command } from 'lucide-react'; // Or any other icon you prefer
 
-// If you don't have a Label component, you can create a simple one or use raw HTML:
-// const Label = ({ htmlFor, children, className }: { htmlFor: string, children: React.ReactNode, className?: string }) => (
-//   <label htmlFor={htmlFor} className={`block text-sm font-medium text-gray-700 dark:text-gray-300 ${className}`}>
-//     {children}
-//   </label>
-// );
 
 interface LoginPageProps {
   onLoginSuccess: (user: { name: string; email: string }) => void;
@@ -71,7 +65,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 placeholder="user@example.com"
                 value={email}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-                initialHeight="auto" // Not strictly needed for standard input type
               />
             </div>
             <div>
@@ -86,7 +79,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 placeholder="password"
                 value={password}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
-                initialHeight="auto" // Not strictly needed for standard input type
               />
             </div>
           </div>

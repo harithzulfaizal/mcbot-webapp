@@ -6,18 +6,18 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import type { ComponentProps } from 'react';
+import type { ComponentProps, CSSProperties } from 'react';
 import type { ExtraProps } from 'react-markdown';
 import { Check, Copy } from 'lucide-react';
 import { Button } from './ui/button';
 
-type CodeComponentProps = ComponentProps<'code'> & ExtraProps;
+type CodeComponentProps = ComponentProps<'code'> & ExtraProps & { inline?: boolean };
 type MarkdownSize = 'default' | 'small';
 
 // Context to pass size down to components
 const MarkdownSizeContext = createContext<MarkdownSize>('default');
 
-const CodeBlock = memo(({ node, inline, className, children, ...props }: CodeComponentProps) => {
+const CodeBlock = memo(({ inline, className, children, ...props }: CodeComponentProps) => {
     const size = useContext(MarkdownSizeContext);
     const match = /language-(\w+)/.exec(className || '');
     const codeString = String(children).replace(/\n$/, '');
@@ -27,11 +27,10 @@ const CodeBlock = memo(({ node, inline, className, children, ...props }: CodeCom
             <div className="relative my-4 rounded-md border bg-secondary/50">
                 <CodeBar lang={match[1]} codeString={codeString} />
                 <SyntaxHighlighter
-                    style={oneDark}
+                    style={oneDark as { [key: string]: CSSProperties }}
                     language={match[1]}
                     PreTag="div"
                     className="!my-0 !p-4 !bg-transparent text-sm rounded-b-md scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/30 scrollbar-thumb-rounded-full"
-                    {...props}
                 >
                     {codeString}
                 </SyntaxHighlighter>

@@ -1,4 +1,3 @@
-// src/components/app-sidebar.tsx
 import {
   AudioWaveform,
   Command,
@@ -13,7 +12,6 @@ import {
 } from "lucide-react";
 import * as React from "react";
 
-import { NavFavorites } from "@/components/nav-favorites";
 import { NavMain } from "@/components/nav-main";
 import { TeamSwitcher } from "@/components/team-switcher";
 import {
@@ -28,11 +26,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarMenuAction,
-  // SidebarSeparator, // No longer needed here if footer has border-t
 } from "@/components/ui/sidebar";
-import { NavWorkspaces } from "./nav-workspaces";
-// Button component might not be needed if SidebarMenuButton is styled appropriately
-// import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 type User = {
