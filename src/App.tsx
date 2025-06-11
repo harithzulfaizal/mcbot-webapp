@@ -57,6 +57,32 @@ export default function App() {
     navigate("/");
   };
 
+  // Chat session management
+  const [sessions, setSessions] = useState<{ id: string; name: string }[]>(() => [
+    { id: crypto.randomUUID(), name: "Chat 0" },
+  ]);
+  const [currentSessionIndex, setCurrentSessionIndex] = useState(0);
+
+  const handleNewConversation = () => {
+    const newIndex = sessions.length;
+    const newSession = { id: crypto.randomUUID(), name: `Chat ${newIndex}` };
+    setSessions((prev) => [...prev, newSession]);
+    setCurrentSessionIndex(newIndex);
+  };
+
+  const handleSelectSession = (index: number) => {
+    setCurrentSessionIndex(index);
+  };
+
+  const handleDeleteSession = (index: number) => {
+    setSessions((prev) => prev.filter((_, i) => i !== index));
+    setCurrentSessionIndex((prev) => {
+      if (index === prev) return 0;
+      if (index < prev) return prev - 1;
+      return prev;
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-900">
@@ -71,7 +97,15 @@ export default function App() {
 
   return (
     <SidebarProvider>
-      <AppSidebar currentUser={currentUser} onLogout={handleLogout} />
+      <AppSidebar
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        sessions={sessions}
+        currentSessionIndex={currentSessionIndex}
+        onSelectSession={handleSelectSession}
+        onNewConversation={handleNewConversation}
+        onDeleteSession={handleDeleteSession}
+      />
       <SidebarInset>
         <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background">
           <div className="flex flex-1 items-center gap-2 px-3">
@@ -93,12 +127,17 @@ export default function App() {
           </div>
           {location.pathname === "/" && (
             <div className="ml-auto px-3">
-              <NavActions />
+              <NavActions onNewConversation={handleNewConversation} />
             </div>
           )}
         </header>
         {/* The ChatBox now controls its own width and can be placed directly */}
-        {location.pathname === "/" ? <ChatBox currentUser={currentUser} /> : null}
+        {location.pathname === "/" ? (
+          <ChatBox
+            key={sessions[currentSessionIndex].id}
+            currentUser={currentUser}
+          />
+        ) : null}
         {location.pathname === "/knowledge-base" ? <KnowledgeBase /> : null}
         {location.pathname !== "/" && location.pathname !== "/knowledge-base" && (
           <div className="p-4">

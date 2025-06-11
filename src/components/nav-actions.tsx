@@ -96,7 +96,7 @@ const data = [
   ],
 ];
 
-export function NavActions() {
+export function NavActions({ onNewConversation }: { onNewConversation: () => void }) {
   const [isOpen, setIsOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -105,7 +105,12 @@ export function NavActions() {
 
   return (
     <div className="flex items-center gap-2 text-sm">
-      <Button variant="outline" size="icon" className="h-7 w-45">
+      <Button
+        variant="outline"
+        size="icon"
+        className="h-7 w-45"
+        onClick={onNewConversation}
+      >
         <MessageSquareMore />
         New Conversation
       </Button>
