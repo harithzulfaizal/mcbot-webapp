@@ -2,14 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import { ChatInput } from "./chat-input";
 import Messages from "./Messages"; 
 
+export type MessageStep = {
+  type: string;
+  content: string;
+};
+
 export type Message = {
-  id: string;
+  id:string;
   sender: "user" | "bot";
   content: string;
-  thinking?: string;
+  steps?: MessageStep[];
   metadata?: Record<string, any>;
   type?: string;
-  createdAt?: Date; // Added for consistency with MessageControls
+  createdAt?: Date;
 };
 
 type User = {
@@ -44,7 +49,8 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
     return [];
   });
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null); // Added useRef for EventSource
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const currentBotMessageId = useRef<string | null>(null);
 
   const [userId, setUserId] = useState<string | null>(null);
   const [isBotTyping, setIsBotTyping] = useState(false);
@@ -59,6 +65,7 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
   const stopStreaming = () => {
     console.log("Stop streaming requested (keeping SSE connection alive).");
     setIsBotTyping(false); 
+    currentBotMessageId.current = null;
   }
 
   useEffect(() => {
@@ -66,105 +73,83 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
 
     console.log(`Setting up SSE for userId: ${userId}, sessionId: ${sessionId}`);
     const newEventSource = new EventSource(`http://localhost:8000/api/chat/events/${userId}/${sessionId}`);
-    eventSourceRef.current = newEventSource; // Store EventSource in ref
+    eventSourceRef.current = newEventSource;
 
     newEventSource.onopen = () => {
       console.log("SSE connection established to http://localhost:8000.");
     };
     
-    let currentMessageId: string | null = null;
-    let accumulatedContent = "";
-    
     newEventSource.onmessage = (event) => {
-        setIsBotTyping(true);
         try {
             const parsedData: AgentMessageOutput = JSON.parse(event.data);
-            
-            // Assuming thinking steps come first or are identifiable
-            if (parsedData.type === 'thinking_step') {
-                 // You could handle thinking steps here if needed
-                 return;
+
+            if (parsedData.source === 'user') {
+                return;
             }
 
-            if (!currentMessageId) {
-                // First part of a new message
-                currentMessageId = crypto.randomUUID();
-                accumulatedContent = parsedData.content;
-                const botMessage: Message = {
-                    id: currentMessageId,
-                    sender: "bot",
-                    content: accumulatedContent,
-                    thinking: parsedData.metadata ? JSON.stringify(parsedData.metadata, null, 2) : undefined,
-                    metadata: parsedData.metadata,
-                    type: parsedData.type,
-                    createdAt: new Date(),
-                };
-                setMessages((prevMessages) => [...prevMessages, botMessage]);
-            } else {
-                // Subsequent parts of the same message stream
-                accumulatedContent += parsedData.content;
-                setMessages((prevMessages) =>
-                    prevMessages.map((msg) =>
-                        msg.id === currentMessageId
-                            ? { ...msg, content: accumulatedContent }
-                            : msg
-                    )
-                );
-            }
+            setMessages(prevMessages => {
+                const newMessages = [...prevMessages];
+                const msgIndex = newMessages.findIndex(m => m.id === currentBotMessageId.current);
 
-            // Check if the message type is ModelResponse to stop streaming
-            if (parsedData.type === 'ModelResponse') {
-                console.log("ModelResponse received, re-enabling input.");
-                stopStreaming(); 
-                handleStreamEnd(); // Ensure UI updates correctly after stopping
-            }
+                if (msgIndex === -1) {
+                    return prevMessages;
+                }
+
+                const currentMsg = { ...newMessages[msgIndex] };
+
+                if (parsedData.type === 'ModelResponse') {
+                    currentMsg.content = parsedData.content;
+                    newMessages[msgIndex] = currentMsg;
+                    stopStreaming();
+                } else {
+                    const steps = currentMsg.steps ? [...currentMsg.steps] : [];
+                    const lastStep = steps[steps.length - 1];
+                    if (lastStep && lastStep.type === parsedData.type) {
+                        lastStep.content += parsedData.content;
+                    } else {
+                        steps.push({ type: parsedData.type, content: parsedData.content });
+                    }
+                    currentMsg.steps = steps;
+                    newMessages[msgIndex] = currentMsg;
+                }
+                
+                return newMessages;
+            });
 
         } catch (error) {
             console.error("Failed to parse SSE message data:", error);
-            const errorBotMessage: Message = {
-                id: crypto.randomUUID(),
-                sender: "bot",
-                content: "An error occurred while processing the response.",
-                thinking: `Error: ${error instanceof Error ? error.message : String(error)}\nData: ${event.data}`,
-                createdAt: new Date(),
-            };
-            setMessages((prevMessages) => [...prevMessages, errorBotMessage]);
-            setIsBotTyping(false);
-            currentMessageId = null; // Reset on error
+            setMessages(prev => {
+                const newMessages = [...prev];
+                const msgIndex = newMessages.findIndex(m => m.id === currentBotMessageId.current);
+                if (msgIndex !== -1) {
+                    newMessages[msgIndex].content = `An error occurred while processing the response.`;
+                }
+                return newMessages;
+            });
+            stopStreaming();
         }
     };
     
-    // A custom event or a specific message content can signal the end of a stream
-    // For now, we'll assume a new message starts a new stream, and errors or closure end it.
     const handleStreamEnd = () => {
         console.log("Stream ended (UI update).");
-        setIsBotTyping(false); // Ensure input is enabled
-        currentMessageId = null; // Reset for the next message
-        // No need to close eventSourceRef.current here as stopStreaming handles it or the natural close does.
+        setIsBotTyping(false);
     };
 
     newEventSource.onerror = (error) => {
       console.error("SSE connection error:", error);
-      // Do not add error message to chat messages, just log to console
       handleStreamEnd();
-      // newEventSource.close(); // stopStreaming or the return function will handle this
-      // if (eventSourceRef.current === newEventSource) { // Only close if it's the current one
-      //   newEventSource.close();
-      //   eventSourceRef.current = null;
-      // }
     };
 
     return () => {
       console.log("Closing SSE connection in cleanup.");
-      if (eventSourceRef.current === newEventSource) {
-        newEventSource.close();
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
       handleStreamEnd();
     };
   }, [userId, sessionId]);
 
- // Persist messages per session
  useEffect(() => {
    if (messages.length > 0) {
      localStorage.setItem(sessionId, JSON.stringify(messages));
@@ -172,7 +157,6 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
  }, [messages, sessionId]);
 
   const sendMessage = async (input: string) => {
-    // After sending, messages will be persisted by effect
     if (!input.trim() || !userId || !sessionId) return;
 
     const userMessage: Message = {
@@ -182,7 +166,16 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
       createdAt: new Date(),
     };
 
-    setMessages((prevMessages) => [...prevMessages, userMessage]);
+    const botMessage: Message = {
+        id: crypto.randomUUID(),
+        sender: "bot",
+        content: "",
+        steps: [],
+        createdAt: new Date(),
+    };
+    
+    currentBotMessageId.current = botMessage.id;
+    setMessages((prevMessages) => [...prevMessages, userMessage, botMessage]);
     setIsBotTyping(true);
 
     try {
@@ -202,30 +195,31 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
         const errorData = await response.json().catch(() => ({ detail: "Failed to send message." }));
         throw new Error(errorData.detail || response.statusText);
       }
-      console.log("Message sent successfully to http://localhost:8000.");
     } catch (error) {
       console.error("Error sending message:", error);
-      setIsBotTyping(false);
-      const errorBotMessage: Message = {
-        id: crypto.randomUUID(),
-        sender: "bot",
-        content: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
-        createdAt: new Date(),
-      };
-      setMessages((prevMessages) => [...prevMessages, errorBotMessage]);
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const msgIndex = newMessages.findIndex(m => m.id === currentBotMessageId.current);
+        if (msgIndex !== -1) {
+            newMessages[msgIndex].content = `Error: ${error instanceof Error ? error.message : "Unknown error"}`;
+        }
+        return newMessages;
+      });
+      stopStreaming();
     }
   };
 
   useEffect(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+    }, 0);
   }, [messages, isBotTyping]);
   
   return (
     <div className="relative w-full h-[calc(100vh-3.5rem)]">
         <main className="flex flex-col w-full max-w-4xl mx-auto h-full">
             <div className="flex-1 overflow-y-auto hide-scrollbar pr-4 -mr-4 pl-4 -ml-4">
-                <Messages messages={messages} isBotTyping={isBotTyping} />
-                <div ref={messagesEndRef} />
+                <Messages messages={messages} isBotTyping={isBotTyping} messagesEndRef={messagesEndRef} />
             </div>
             {showPrompts && messages.filter(msg => msg.content !== "Connection to the chat service was lost or could not be established.").length === 0 && !isBotTyping && (
             <div className="flex justify-center py-4">

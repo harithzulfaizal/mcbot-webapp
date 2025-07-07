@@ -17,7 +17,7 @@ import {
   SidebarTrigger,
 } from "./components/ui/sidebar";
 import { ChatBox } from "./components/chat-box";
-import KnowledgeBase from "./pages/knowledge-base";
+import KnowledgeBasePage from "./pages/knowledge-base";
 import LoginPage from "./pages/login-page";
 
 // Define a type for the user state
@@ -146,7 +146,7 @@ export default function App() {
             currentUser={currentUser}
           />
         )}
-        {location.pathname === "/knowledge-base" ? <KnowledgeBase /> : null}
+        {location.pathname === "/knowledge-base" ? <KnowledgeBasePage currentUser={currentUser} /> : null}
         {location.pathname !== "/" && location.pathname !== "/knowledge-base" && (
           <div className="p-4">
             <h2 className="text-lg font-semibold">Page not found</h2>

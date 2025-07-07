@@ -2,12 +2,13 @@
 import { memo, useState } from 'react';
 import MemoizedMarkdown from './memoized-markdown';
 import { ChevronDown, ChevronUp } from 'lucide-react';
+import { MessageStep } from '@/components/chat-box';
 
 function PureMessageReasoning({
-  reasoning,
+  steps,
   id,
 }: {
-  reasoning: string;
+  steps: MessageStep[];
   id: string;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -28,8 +29,13 @@ function PureMessageReasoning({
         <span className="text-sm">Show thinking</span>
       </button>
       {isExpanded && (
-        <div id={`reasoning-${id}`} className="p-4 rounded-md bg-secondary/50 text-xs border">
-          <MemoizedMarkdown content={reasoning} id={id} size="small" />
+        <div id={`reasoning-${id}`} className="p-4 rounded-md bg-secondary/50 text-xs border space-y-4">
+          {steps.map((step, index) => (
+            <div key={index} className="p-4 rounded-md bg-background border">
+              <p className="font-semibold mb-2">{step.type}</p>
+              <MemoizedMarkdown content={step.content} id={`${id}-step-${index}`} size="small" />
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -37,5 +43,5 @@ function PureMessageReasoning({
 }
 
 export default memo(PureMessageReasoning, (prev, next) => {
-  return prev.reasoning === next.reasoning && prev.id === next.id;
+  return prev.steps === next.steps && prev.id === next.id;
 });

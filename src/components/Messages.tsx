@@ -8,9 +8,11 @@ import { Skeleton } from './ui/skeleton';
 function PureMessages({
   messages,
   isBotTyping,
+  messagesEndRef,
 }: {
   messages: UIMessage[];
   isBotTyping: boolean;
+  messagesEndRef: React.RefObject<HTMLDivElement | null>;
 }) {
   return (
     <section className="flex flex-col pt-5 space-y-6">
@@ -21,17 +23,10 @@ function PureMessages({
           isStreaming={isBotTyping && index === messages.length - 1}
         />
       ))}
-      {isBotTyping && messages[messages.length - 1]?.sender === 'user' && <BotTypingIndicator />}
+      <div ref={messagesEndRef} />
     </section>
   );
 }
-
-const BotTypingIndicator = () => (
-    <div className="flex flex-col items-start space-y-2 max-w-[85%]">
-        <Skeleton className="h-6 w-48" />
-        <Skeleton className="h-4 w-64" />
-    </div>
-);
 
 
 const Messages = memo(PureMessages, (prevProps, nextProps) => {
@@ -43,4 +38,3 @@ const Messages = memo(PureMessages, (prevProps, nextProps) => {
 Messages.displayName = 'Messages';
 
 export default Messages;
-

@@ -6,6 +6,14 @@ import { Message as UIMessage } from '@/components/chat-box'; // Adjusted import
 import equal from 'fast-deep-equal';
 import MessageControls from './message-controls';
 import MessageReasoning from './message-reasoning';
+import { Skeleton } from './ui/skeleton';
+
+const BotTypingIndicator = () => (
+    <div className="flex flex-col items-start space-y-2 max-w-[85%]">
+        <Skeleton className="h-6 w-48" />
+        <Skeleton className="h-4 w-64" />
+    </div>
+);
 
 function PureMessage({
   message,
@@ -14,6 +22,8 @@ function PureMessage({
   message: UIMessage;
   isStreaming: boolean;
 }) {
+  const isLoading = message.sender === 'bot' && !message.content && (!message.steps || message.steps.length === 0);
+
   return (
     <div
       role="article"
@@ -28,29 +38,37 @@ function PureMessage({
             message.sender === 'user' ? 'items-end' : 'items-start'
         )}
       >
-        {/* Render "thinking" section if available */}
-        {message.sender === 'bot' && message.thinking && (
-            <MessageReasoning reasoning={message.thinking} id={message.id} />
-        )}
+        {isLoading ? (
+            <BotTypingIndicator />
+        ) : (
+            <>
+                {/* Render "thinking" section if available */}
+                {message.sender === 'bot' && message.steps && message.steps.length > 0 && (
+                    <MessageReasoning steps={message.steps} id={message.id} />
+                )}
 
-        {/* Main message body */}
-        <div
-            className={cn(
-                'px-4 py-3 rounded-xl',
-                message.sender === 'user'
-                ? 'bg-secondary border border-secondary-foreground/2'
-                : 'bg-transparent' // Bot messages have transparent background to let markdown styles show
-            )}
-        >
-            <MemoizedMarkdown content={message.content} id={message.id} />
-        </div>
+                {/* Main message body */}
+                {message.content && (
+                    <div
+                        className={cn(
+                            'px-4 py-3 rounded-xl',
+                            message.sender === 'user'
+                            ? 'bg-secondary border border-secondary-foreground/2'
+                            : 'bg-transparent' // Bot messages have transparent background to let markdown styles show
+                        )}
+                    >
+                        <MemoizedMarkdown content={message.content} id={message.id} />
+                    </div>
+                )}
 
-        {/* Message controls */}
-        {!isStreaming && message.sender === 'bot' && (
-             <MessageControls
-                message={message}
-                content={message.content}
-            />
+                {/* Message controls */}
+                {!isStreaming && message.sender === 'bot' && message.content && (
+                     <MessageControls
+                        message={message}
+                        content={message.content}
+                    />
+                )}
+            </>
         )}
       </div>
     </div>

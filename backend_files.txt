@@ -1,0 +1,3765 @@
+Ingestion Results for /Users/harithzulfaizal/Code/Work/mekbot
+Summary
+Directory: mekbot
+Files analyzed: 31
+
+Estimated tokens: 31.7k
+
+
+Directory structure:
+└── mekbot/
+    ├── _chroma_ingest.py
+    ├── _chroma_manage.py
+    ├── _chroma_migrate_source.py
+    ├── logger.py
+    ├── main.py
+    ├── requirements.txt
+    ├── test.py
+    ├── api/
+    │   ├── __init__.py
+    │   ├── chat.py
+    │   ├── history.py
+    │   └── kb_management.py
+    ├── archive/
+    │   └── _rag_(no_agent).py
+    ├── chroma_db/
+    │   ├── chroma.sqlite3
+    │   ├── 56f0bab3-f1a0-4552-8e2f-3065a9451cf4/
+    │   │   ├── header.bin
+    │   │   ├── length.bin
+    │   │   └── link_lists.bin
+    │   └── dcd8e74d-5109-452d-a99b-1f280d010d55/
+    │       ├── header.bin
+    │       ├── length.bin
+    │       └── link_lists.bin
+    ├── core/
+    │   ├── agent.py
+    │   ├── chroma_db.py
+    │   ├── embeddings.py
+    │   ├── llm.py
+    │   ├── preprocess.py
+    │   ├── prompts.py
+    │   ├── query_engine.py
+    │   ├── schema.py
+    │   └── tools.py
+    ├── db/
+    │   └── chroma_db/
+    │       └── chroma.sqlite3
+    ├── local/
+    │   └── team_state.json
+    ├── static/
+    │   └── index.html
+    └── uploads/
+        └── admin/
+
+
+File Contents
+
+===============================================
+File: _chroma_ingest.py
+===============================================
+
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+EMBED_MODEL = os.getenv("EMBED_MODEL")
+EMBED_BASE_URL = os.getenv("EMBED_BASE_URL")
+EMBED_API_KEY = os.getenv("EMBED_API_KEY")
+
+print(EMBED_MODEL, EMBED_BASE_URL, EMBED_API_KEY)
+
+from llama_index.llms.openai_like import OpenAILike
+from llama_index.embeddings.openai_like import OpenAILikeEmbedding
+
+llm_model = os.getenv("LLM_MODEL", "qwen/qwen3-8b:free")
+llm_base_url = os.getenv("LLM_BASE_URL", "")
+llm_api_key = os.getenv("LLM_API_KEY", "")
+
+print(llm_model, llm_base_url, llm_api_key)
+
+llm = OpenAILike(
+    model=llm_model,
+    api_base=llm_base_url,
+    api_key=llm_api_key,
+    context_window=32000,
+    is_chat_model=True,
+    is_function_calling_model=True,
+)
+
+embed_model = OpenAILikeEmbedding(
+    model_name=EMBED_MODEL,
+    api_base=EMBED_BASE_URL,
+    api_key=EMBED_API_KEY,
+)
+
+from core.preprocess import preprocess_data
+from core.chroma_db import ChromaDB
+
+client =  ChromaDB(
+    db_path="./chroma_db"
+)
+
+documents = preprocess_data()
+
+print(documents[-1])
+
+client.add_documents(
+    documents=documents,
+    collection_name="jina_fomc_256_metadata_002",
+    chunk_size=256,
+    embed_model=embed_model,
+    llm=llm
+)
+
+===============================================
+File: _chroma_manage.py
+===============================================
+
+import chromadb
+
+client = chromadb.PersistentClient(path="./chroma_db")
+
+collection = client.create_collection(
+    name="jina_fomc_256_metadata_002",
+)
+
+===============================================
+File: _chroma_migrate_source.py
+===============================================
+
+import chromadb
+from datetime import datetime
+
+def migrate_source_column():
+    """
+    This script adds a 'source' column to the metadata of existing documents
+    in a ChromaDB collection. The source is formatted as 'FOMC Meeting Minutes {date}'.
+    """
+    db_path = "./chroma-data"
+    collection_name = "fomc_chunk_256_metadata"
+
+    print(f"Connecting to ChromaDB at '{db_path}'...")
+    client = chromadb.PersistentClient(path=db_path)
+
+    try:
+        print(f"Getting collection '{collection_name}'...")
+        collection = client.get_collection(name=collection_name)
+    except Exception as e:
+        print(f"Error getting collection: {e}")
+        return
+
+    print("Fetching existing documents...")
+    results = collection.get(include=["metadatas"])
+    
+    ids = results['ids']
+    metadatas = results['metadatas']
+    
+    if not ids:
+        print("No documents found in the collection. Nothing to migrate.")
+        return
+
+    print(f"Found {len(ids)} document chunks to update.")
+
+    new_metadatas = []
+    for metadata in metadatas:
+        date_val = metadata.get("date")
+        if date_val:
+            try:
+                date_str = str(date_val)
+                datetime.strptime(date_str, "%Y%m%d")
+                source = f"FOMC Meeting Minutes {date_str}"
+                metadata['source'] = source
+            except ValueError:
+                print(f"Skipping document with invalid date format: {date_val}")
+        else:
+            print("Skipping document with no date in metadata.")
+
+        new_metadatas.append(metadata)
+
+    print("Updating documents with new metadata...")
+    try:
+        collection.update(
+            ids=ids,
+            metadatas=new_metadatas
+        )
+        print("Migration successful. All documents have been updated with a 'source' field.")
+    except Exception as e:
+        print(f"An error occurred during the update: {e}")
+
+if __name__ == "__main__":
+    migrate_source_column()
+
+
+===============================================
+File: logger.py
+===============================================
+
+import logging
+import os
+
+root_dir = os.path.dirname(os.path.abspath(__file__))
+log_file = os.path.join(root_dir, 'mekbot.log')
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(name)s: %(message)s',
+    handlers=[
+        logging.FileHandler(log_file),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+===============================================
+File: main.py
+===============================================
+
+import os
+
+import uvicorn
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
+print(f"ROOT_DIR: {ROOT_DIR}")
+print(f"BASE_DIR: {BASE_DIR}")
+print(f"STATIC_DIR: {STATIC_DIR}")
+
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+from api import chat, history, kb_management
+
+# Create a FastAPI instance
+app = FastAPI(title="Agentic MCBot API", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+app.include_router(chat.router, prefix="/api", tags=["chat"])
+app.include_router(history.router, prefix="/api", tags=["history"])
+app.include_router(kb_management.router, prefix="/api", tags=["kb_management"])
+
+app.mount("/static", StaticFiles(directory="."), name="static")
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+
+@app.get("/")
+async def root():
+    """Serve the chat interface HTML file."""
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
+
+
+===============================================
+File: requirements.txt
+===============================================
+
+accelerate==1.4.0
+aiofiles==24.1.0
+aiohappyeyeballs==2.4.6
+aiohttp==3.11.12
+aiosignal==1.3.2
+annotated-types==0.7.0
+anyio==4.8.0
+asgiref==3.8.1
+asttokens==3.0.0
+asyncer==0.0.8
+attrs==25.1.0
+autogen==0.7.6
+autogen-agentchat==0.4.8
+autogen-core==0.4.8
+autogen-ext==0.4.8
+azure-ai-inference==1.0.0b9
+azure-core==1.32.0
+azure-identity==1.20.0
+backoff==2.2.1
+bcrypt==4.2.1
+beautifulsoup4==4.13.3
+build==1.2.2.post1
+cachetools==5.5.2
+certifi==2025.1.31
+cffi==1.17.1
+charset-normalizer==3.4.1
+chroma-hnswlib==0.7.6
+chromadb==0.6.3
+click==8.1.8
+cohere==5.13.12
+colorama==0.4.6
+coloredlogs==15.0.1
+comm==0.2.2
+cryptography==44.0.1
+dataclasses-json==0.6.7
+debugpy==1.8.12
+decorator==5.1.1
+Deprecated==1.2.18
+dirtyjson==1.0.8
+diskcache==5.6.3
+distro==1.9.0
+docker==7.1.0
+durationpy==0.9
+essential-generators==1.0
+executing==2.2.0
+fast-depends==2.4.12
+fastapi==0.115.8
+fastavro==1.10.0
+filelock==3.17.0
+filetype==1.2.0
+flatbuffers==25.2.10
+frozenlist==1.5.0
+fsspec==2025.2.0
+google-auth==2.38.0
+googleapis-common-protos==1.68.0
+greenlet==3.1.1
+grpcio==1.70.0
+h11==0.14.0
+httpcore==1.0.7
+httptools==0.6.4
+httpx==0.28.1
+httpx-sse==0.4.0
+huggingface-hub==0.29.1
+humanfriendly==10.0
+idna==3.10
+importlib_metadata==8.5.0
+importlib_resources==6.5.2
+ipykernel==6.29.5
+ipython==8.32.0
+isodate==0.7.2
+jedi==0.19.2
+Jinja2==3.1.5
+jiter==0.8.2
+joblib==1.4.2
+json_repair==0.39.0
+jsonref==1.1.0
+jupyter_client==8.6.3
+jupyter_core==5.7.2
+kubernetes==32.0.1
+llama-cloud==0.1.13
+llama-cloud-services==0.6.1
+llama-index==0.12.19
+llama-index-agent-openai==0.4.6
+llama-index-cli==0.4.0
+llama-index-core==0.12.19
+llama-index-embeddings-azure-openai==0.3.0
+llama-index-embeddings-openai==0.3.1
+llama-index-indices-managed-llama-cloud==0.6.8
+llama-index-llms-azure-inference==0.3.0
+llama-index-llms-azure-openai==0.3.0
+llama-index-llms-openai==0.3.20
+llama-index-llms-openai-like==0.3.4
+llama-index-multi-modal-llms-openai==0.4.3
+llama-index-postprocessor-cohere-rerank==0.3.0
+llama-index-postprocessor-colbert-rerank==0.3.0
+llama-index-postprocessor-longllmlingua==0.4.0
+llama-index-program-openai==0.3.1
+llama-index-question-gen-openai==0.3.0
+llama-index-readers-file==0.4.5
+llama-index-readers-llama-parse==0.4.0
+llama-index-vector-stores-chroma==0.4.1
+llama-parse==0.6.1
+llmlingua==0.2.2
+markdown-it-py==3.0.0
+MarkupSafe==3.0.2
+marshmallow==3.26.1
+matplotlib-inline==0.1.7
+mdurl==0.1.2
+mmh3==5.1.0
+monotonic==1.6
+mpmath==1.3.0
+msal==1.31.1
+msal-extensions==1.2.0
+multidict==6.1.0
+mypy-extensions==1.0.0
+nest-asyncio==1.6.0
+networkx==3.4.2
+nltk==3.9.1
+numpy==1.26.4
+oauthlib==3.2.2
+onnxruntime==1.20.1
+openai==1.63.2
+opentelemetry-api==1.30.0
+opentelemetry-exporter-otlp-proto-common==1.30.0
+opentelemetry-exporter-otlp-proto-grpc==1.30.0
+opentelemetry-instrumentation==0.51b0
+opentelemetry-instrumentation-asgi==0.51b0
+opentelemetry-instrumentation-fastapi==0.51b0
+opentelemetry-proto==1.30.0
+opentelemetry-sdk==1.30.0
+opentelemetry-semantic-conventions==0.51b0
+opentelemetry-util-http==0.51b0
+orjson==3.10.15
+overrides==7.7.0
+packaging==24.2
+pandas==2.2.3
+parso==0.8.4
+pillow==11.1.0
+platformdirs==4.3.6
+portalocker==2.10.1
+posthog==3.14.2
+prompt_toolkit==3.0.50
+propcache==0.3.0
+protobuf==5.29.3
+psutil==7.0.0
+pure_eval==0.2.3
+py-ulid==1.0.3
+pyarrow==19.0.1
+pyasn1==0.6.1
+pyasn1_modules==0.4.1
+pyautogen==0.7.6
+pycparser==2.22
+pydantic==2.10.6
+pydantic_core==2.27.2
+Pygments==2.19.1
+PyJWT==2.10.1
+pypdf==5.1.0
+PyPika==0.48.9
+pyproject_hooks==1.2.0
+pyreadline3==3.5.4
+python-dateutil==2.9.0.post0
+python-dotenv==1.0.1
+pytz==2025.1
+PyYAML==6.0.2
+pyzmq==26.2.1
+regex==2024.11.6
+requests==2.32.3
+requests-oauthlib==2.0.0
+rich==13.9.4
+rsa==4.9
+safetensors==0.5.2
+shellingham==1.5.4
+six==1.17.0
+sniffio==1.3.1
+soupsieve==2.6
+SQLAlchemy==2.0.38
+stack-data==0.6.3
+starlette==0.45.3
+striprtf==0.0.26
+sympy==1.13.1
+tenacity==8.5.0
+termcolor==2.5.0
+tiktoken==0.9.0
+tokenizers==0.21.0
+torch==2.6.0
+tornado==6.4.2
+tqdm==4.67.1
+traitlets==5.14.3
+transformers==4.49.0
+typer==0.15.1
+types-requests==2.32.0.20241016
+typing-inspect==0.9.0
+typing_extensions==4.12.2
+tzdata==2025.1
+urllib3==2.3.0
+uvicorn==0.34.0
+watchfiles==1.0.4
+wcwidth==0.2.13
+websocket-client==1.8.0
+websockets==15.0
+wrapt==1.17.2
+xxhash==3.5.0
+yarl==1.18.3
+zipp==3.21.0
+'markitdown[all]'
+
+
+===============================================
+File: test.py
+===============================================
+
+import asyncio
+
+from core.agent import test  # , test_without_reviewer
+
+queries = [
+    # "Trace the chronology of decisions related to federal fund rates from 2017 to 2019",
+    # "What are the decisions made on 28 Jan 2015 by unanimous vote?",
+    "What were the main economic indicators discussed during the latest meeting, and what were the general sentiments regarding them?",
+    # "How did the views of different committee members align or diverge regarding interest rate adjustments?",
+    # "Referring to the meeting on 22 March 2023, what were the key milestones or decision points during the meeting, and how were they addressed chronologically?"
+]
+
+
+async def main():
+    benchmark = []
+    for query in queries:
+        result = await test(query)
+        # result = await test_without_reviewer(query)
+        benchmark.append(result)
+
+    print("===================================================================\n\n")
+    for b, q in zip(benchmark, queries):
+        print(f"QUERY: {q}\n")
+        print(b["answer"]["answer"])
+        print(b["exec_time"])
+
+        print("-------\n")
+
+
+asyncio.run(main())
+
+
+===============================================
+File: api/__init__.py
+===============================================
+
+__all__ = [
+    "chat",
+    "history"
+]
+
+===============================================
+File: api/chat.py
+===============================================
+
+import asyncio
+import json
+import os
+from collections import defaultdict
+
+import json_repair
+from autogen_agentchat.messages import TextMessage, ToolCallSummaryMessage
+from autogen_core import CancellationToken
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
+
+# from api.history import get_history_for_session, clear_history_for_session
+from api.history import get_history, clear_history
+from core.agent import init_group_chat
+from core.schema import ChatMessageInput, AgentMessageOutput
+from logger import logger
+
+router = APIRouter()
+
+history_path = os.getenv("HISTORY_PATH")
+state_path = os.getenv("STATE_PATH")
+
+session_message_queues = defaultdict(asyncio.Queue)
+
+
+def get_session_specific_history_path(user_id: str, session_id: str) -> str:
+    """Generates a unique history path for a given user and session."""
+    # Example: local_data/user_123/session_abc/history.json
+    # Ensure the directory structure is created if it doesn't exist.
+    base_dir = os.getenv("HISTORY_BASE_PATH", os.path.join(os.getcwd(), "local_data"))
+    session_path = os.path.join(base_dir, user_id, session_id)
+    os.makedirs(session_path, exist_ok=True)
+    return os.path.join(session_path, "history.json")
+
+def get_session_specific_state_path(user_id: str, session_id: str) -> str:
+    """Generates a unique state path for a given user and session."""
+    base_dir = os.getenv("STATE_BASE_PATH", os.path.join(os.getcwd(), "local_data"))
+    session_path = os.path.join(base_dir, user_id, session_id)
+    os.makedirs(session_path, exist_ok=True)
+    return os.path.join(session_path, "team_state.json")
+
+
+@router.get("/chat/events/{user_id}/{session_id}")
+async def sse_endpoint(request: Request, user_id: str, session_id: str):
+    """
+    SSE endpoint that streams responses for a specific user_id and session_id.
+    """
+    session_key = (user_id, session_id)
+    current_message_queue = session_message_queues[session_key]
+    logger.info(f"SSE connection established for user {user_id}, session {session_id}")
+    print(f"Current message queue for {session_key} -------------------")
+
+    async def event_generator():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    logger.info(f"Client disconnected for user {user_id}, session {session_id}. Cleaning up queue.")
+                    if session_key in session_message_queues:
+                        del session_message_queues[session_key]
+                    break
+
+                try:
+                    user_msg_dict = await asyncio.wait_for(current_message_queue.get(), timeout=300) # 5 min timeout
+                    user_msg = TextMessage.model_validate(user_msg_dict)
+                    current_message_queue.task_done() # Mark task as done
+                except asyncio.TimeoutError:
+                    yield "event: keep-alive\ndata: \n\n"
+                    continue
+                except Exception as e:
+                    logger.error(f"Error retrieving user message for {session_key}: {str(e)}")
+                    error_message = {
+                        "type": "error",
+                        "content": f"Error retrieving user message: {str(e)}",
+                        "source": "system",
+                    }
+                    yield f"data: {json.dumps(error_message)}\n\n"
+                    continue 
+
+                try:
+                    logger.info(f"Processing message for {session_key}: {user_msg.content}")
+
+                    async def _user_input_for_session(prompt: str, cancellation_token: CancellationToken | None) -> str:
+                        logger.info(f"Agent requesting input for {session_key} with prompt: {prompt}")
+
+                        next_msg_dict = await current_message_queue.get()
+                        next_msg_obj = TextMessage.model_validate(next_msg_dict)
+                        current_message_queue.task_done()
+                        logger.info(f"Agent received subsequent input for {session_key}: {next_msg_obj.content}")
+                        return next_msg_obj.content
+
+                    # history_path = get_session_specific_history_path(user_id, session_id)
+                    # state_path = get_session_specific_state_path(user_id, session_id)
+
+                    team = await init_group_chat(_user_input_for_session)
+                    
+                    history = await get_history()
+                    stream = team.run_stream(task=user_msg.content)
+
+                    async for message in stream:
+                        if await request.is_disconnected():
+                            logger.info(f"Client disconnected during stream for {session_key}.")
+                            break
+                        
+                        if isinstance(message, TextMessage) or isinstance(message, ToolCallSummaryMessage):
+                            if message.source != "SummarizerAgent":
+                                data_dict = message.model_dump()
+                            else:
+                                try:
+                                    content = json_repair.loads(message.content)
+                                    data_dict = {
+                                        "source": content.get("sources", "SummarizerAgent"), # Ensure source exists
+                                        "content": content.get("answer", ""), # Ensure answer exists
+                                        "type": "ModelResponse", # This is a custom type for the frontend
+                                    }
+                                except Exception as e:
+                                    logger.error(f"Error parsing SummarizerAgent content for {session_key}: {e}")
+                                    data_dict = {"source": "SummarizerAgent", "content": "Error processing summary.", "type": "error"}
+
+                            logger.debug(f"Streaming data for {session_key}: {data_dict}")
+                            event_data = f"data: {json.dumps(data_dict)}\n\n"
+                            yield event_data
+
+                            if message.source == "SummarizerAgent":
+                                logger.info(f"SummarizerAgent finished for {session_key}. Ending stream for this message.")
+                                break # End after summarizer agent for this particular user message
+                    
+                    # Save history and state after processing the message stream
+                    # This assumes team.save_state() and history saving logic are adapted for session paths
+                    # async with aiofiles.open(state_path, "w") as file:
+                    #     state_data = await team.save_state()
+                    #     await file.write(json.dumps(state_data))
+                    # logger.info(f"Saved state for {session_key} to {state_path}")
+                    #
+                    # # History saving might be handled by the agent or need explicit saving here
+                    # current_chat_history = team.chat_messages # Or however history is retrieved
+                    # async with aiofiles.open(history_path, "w") as file:
+                    # await file.write(json.dumps([msg.model_dump() for msg in current_chat_history]))
+                    # logger.info(f"Saved history for {session_key} to {history_path}")
+
+
+                except Exception as e:
+                    import traceback
+                    print(traceback.format_exc())
+                    logger.error(f"Error processing stream for {session_key}: {str(e)}")
+                    error_message = {
+                        "type": "error",
+                        "content": f"Stream processing error: {str(e)}",
+                        "source": "system",
+                    }
+                    yield f"data: {json.dumps(error_message)}\n\n"
+                    # Continue to allow for new messages, or break if it's a fatal session error
+        finally:
+            # Final cleanup when the generator exits (e.g., client disconnects for good)
+            if session_key in session_message_queues:
+                logger.info(f"SSE event_generator finished for {session_key}. Removing queue.")
+                # Drain the queue to allow any pending putters to complete
+                while not session_message_queues[session_key].empty():
+                    try:
+                        session_message_queues[session_key].get_nowait()
+                        session_message_queues[session_key].task_done()
+                    except asyncio.QueueEmpty:
+                        break
+                del session_message_queues[session_key]
+            else:
+                logger.info(f"SSE event_generator finished for {session_key}, but queue was already removed.")
+
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/chat/message")
+async def post_message(message_input: ChatMessageInput):
+    """
+    Receives a chat message and enqueues it for the specific user_id and session_id.
+    """
+    try:
+        user_id = message_input.user_id
+        session_id = message_input.session_id
+        session_key = (user_id, session_id)
+
+        if not user_id or not session_id:
+            raise HTTPException(status_code=400, detail="user_id and session_id are required.")
+
+        msg_dict_to_enqueue = {
+            "content": message_input.content,
+            "source": message_input.source,
+            "type": message_input.type,
+        }
+        
+        await session_message_queues[session_key].put(msg_dict_to_enqueue)
+        logger.info(f"Message enqueued for user {user_id}, session {session_id}: {message_input.content}")
+
+        return {
+            "status": "Message received and enqueued",
+            "user_id": user_id,
+            "session_id": session_id,
+        }
+    except Exception as e:
+        logger.error(f"POST /chat/message error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+
+===============================================
+File: api/history.py
+===============================================
+
+import json
+import os
+from typing import Any
+
+import aiofiles
+from fastapi import APIRouter, HTTPException
+
+history_path = os.getenv("HISTORY_PATH")
+state_path = os.getenv("STATE_PATH")
+
+print("HISTORY_PATH:", history_path)
+print("STATE_PATH:", state_path)
+
+router = APIRouter()
+
+
+async def get_history() -> list[dict[str, Any]]:
+    """Get chat history from file."""
+    print("get history")
+    if not os.path.exists(history_path):
+        return []
+    async with aiofiles.open(history_path, "r") as file:
+        return json.loads(await file.read())
+
+
+@router.get("/history")
+async def history() -> list[dict[str, Any]]:
+    try:
+        return await get_history()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/history/clear")
+async def clear_history() -> None:
+    try:
+        async with aiofiles.open(history_path, "w") as file:
+            await file.write(json.dumps([]))
+        os.remove(state_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+===============================================
+File: api/kb_management.py
+===============================================
+
+import asyncio
+import json
+import os
+from collections import defaultdict
+from datetime import datetime
+
+import json_repair
+from autogen_agentchat.messages import TextMessage, ToolCallSummaryMessage
+from autogen_core import CancellationToken
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
+from markitdown import MarkItDown
+from llama_index.core import Document
+
+from core.chroma_db import ChromaDB
+from core.llm import LLM
+from core.embeddings import embed_model
+from logger import logger
+
+router = APIRouter()
+
+llm = LLM().get_llm()
+
+@router.post("/kb/upload_documents")
+async def upload_documents(request: Request):
+    try:
+        form = await request.form()
+        user_id = form.get("user_id")
+        files = form.getlist("files")
+        if not user_id or not files:
+            raise HTTPException(status_code=400, detail="user_id and files are required")
+
+        upload_dir = f"./uploads/{user_id}"
+        try:
+            os.makedirs(upload_dir, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Failed to create upload directory: {e}")
+            raise HTTPException(status_code=500, detail="Failed to create upload directory")
+
+        async def process_file(file):
+            filename = file.filename
+            file_path = os.path.join(upload_dir, filename)
+            try:
+                content = await file.read()
+                with open(file_path, "wb") as f:
+                    f.write(content)
+
+                md = MarkItDown()
+                result = md.convert(file_path)
+                
+                return Document(
+                    text=result.text_content,
+                    metadata={
+                        "doc_id": filename,
+                        "date": int(datetime.now().strftime("%Y%m%d")),
+                        "source": filename,
+                    },
+                )
+            except Exception as e:
+                logger.error(f"Failed to process file {filename}: {e}")
+                return None
+
+        tasks = [process_file(file) for file in files]
+        processed_documents = await asyncio.gather(*tasks)
+        
+        documents = [doc for doc in processed_documents if doc]
+        saved_files = [doc.metadata["doc_id"] for doc in documents]
+
+        if not documents:
+            return {"user_id": user_id, "uploaded_files": [], "message": "No documents were processed successfully."}
+
+        client = ChromaDB(db_path="./chroma-data")
+        collection_name = "fomc_chunk_256_metadata"
+
+        await asyncio.to_thread(
+            client.add_documents,
+            collection_name=collection_name,
+            documents=documents,
+            chunk_size=256,
+            embed_model=embed_model,
+            llm=llm,
+        )
+
+        return {"user_id": user_id, "uploaded_files": saved_files}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during upload: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Unexpected error during upload")
+
+
+@router.get("/kb/documents")
+async def list_all_documents():
+    try:
+        client = ChromaDB(db_path="./chroma-data")
+        collection_name = "fomc_chunk_256_metadata"
+        
+        documents = await asyncio.to_thread(client.list_documents, collection_name)
+        
+        return {"documents": documents}
+    except Exception as e:
+        logger.error(f"Error listing documents: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list documents")
+
+@router.delete("/kb/documents/{doc_id}")
+async def delete_document_by_id(doc_id: str):
+    try:
+        client = ChromaDB(db_path="./chroma-data")
+        collection_name = "fomc_chunk_256_metadata"
+        
+        await asyncio.to_thread(client.delete_documents, collection_name, doc_id)
+        
+        return {"message": f"Document with doc_id '{doc_id}' deleted successfully."}
+    except Exception as e:
+        logger.error(f"Error deleting document {doc_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete document {doc_id}")
+
+
+===============================================
+File: archive/_rag_(no_agent).py
+===============================================
+
+from typing import Optional
+
+from llm import LLM
+from tools import generate_response, retrieve_documents
+
+EXTRACT_DATE_PROMPT = """
+Your task is to extract and highlight the start and end dates from the query if the user specifies a specific date range. 
+For a single date, use it as both the start and end.
+For a year-only mention, set the start to January 1st and the end to December 31st of that year.
+For a range from one year to another, start on January 1st of the first year and end on December 31st of the last year.
+If no date is specified, return null for both dates.
+
+The output should be a markdown code snippet formatted in the following schema, including the leading and trailing "```json" and "```":
+```json
+{{
+    "start_date": string // the start date: 'yyyy-mm-dd' or null,
+    "end_date": string // the end date: 'yyyy-mm-dd' or null,
+}}
+```
+
+TEXT:
+{query}
+
+OUTPUT:
+"""
+
+
+def extract_dates(query: str) -> tuple[Optional[str], Optional[str]]:
+    """
+    This function extracts the start and end dates from a user's query, if they are specified.
+    It takes user query as input and return the start and end dates.
+    """
+    # prompt to extract dates from user query
+    prompt = EXTRACT_DATE_PROMPT.format(query=query)
+
+    # get the extracted dates from LLM
+    dates = LLM().call_llm(prompt)
+
+    # verify date format
+    if dates and isinstance(dates, dict):
+        start_date = dates.get("start_date")
+        end_date = dates.get("end_date")
+    else:
+        start_date, end_date = None, None
+
+    return start_date, end_date
+
+
+def main():
+    """
+    Collection Name:
+    (a) fomc -- chunk size: 512, metadata=date
+    (b) fomc_metadata -- chunk size: 512, metadata=date, questions, keywords
+    (c) fomc_chunk_256_metadata -- chunk size: 256, metadata=date
+    (d) fomc_chunk_256_metadata -- chunk size: 256, metadata=date, questions
+    """
+    collection_name = "fomc_chunk_256_metadata"  # change
+    k = 20
+    # query = "Trace the chronology of decisions related to federal fund rates from 2015 to 2019"
+    query = "Did the committee discuss any external factors, such as global economic events, that might influence their policy decisions?"
+
+    # extract start and end dates from user query
+    start_date, end_date = extract_dates(query)
+    print(start_date, end_date)
+
+    # retrieve relevant documents from vector db
+    context = retrieve_documents(
+        query=query,
+        collection_name=collection_name,
+        k=k,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    # generate response
+    response = generate_response(context=context, query=query)
+    print(response)
+
+    return {"answer": response["answer"], "sources": response["sources"]}
+
+
+if __name__ == "__main__":
+    main()
+
+
+===============================================
+File: chroma_db/chroma.sqlite3
+===============================================
+
+[Non-text file]
+
+===============================================
+File: chroma_db/56f0bab3-f1a0-4552-8e2f-3065a9451cf4/header.bin
+===============================================
+
+[Non-text file]
+
+===============================================
+File: chroma_db/56f0bab3-f1a0-4552-8e2f-3065a9451cf4/length.bin
+===============================================
+
+[Non-text file]
+
+===============================================
+File: chroma_db/56f0bab3-f1a0-4552-8e2f-3065a9451cf4/link_lists.bin
+===============================================
+
+
+
+===============================================
+File: chroma_db/dcd8e74d-5109-452d-a99b-1f280d010d55/header.bin
+===============================================
+
+[Non-text file]
+
+===============================================
+File: chroma_db/dcd8e74d-5109-452d-a99b-1f280d010d55/length.bin
+===============================================
+
+[Non-text file]
+
+===============================================
+File: chroma_db/dcd8e74d-5109-452d-a99b-1f280d010d55/link_lists.bin
+===============================================
+
+
+
+===============================================
+File: core/agent.py
+===============================================
+
+import asyncio
+import json
+import logging
+import os
+import re
+import time
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple, Union
+
+import aiofiles
+import json_repair
+from autogen_agentchat.agents import AssistantAgent, UserProxyAgent
+from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
+from autogen_agentchat.messages import (
+    AgentEvent,
+    ChatMessage,
+)
+from autogen_agentchat.teams import SelectorGroupChat
+from autogen_agentchat.ui import Console
+from autogen_core import (
+    CancellationToken,
+)
+from autogen_ext.models.openai import OpenAIChatCompletionClient
+
+from core.prompts import (
+    FOMC_AGENT_PROMPT,
+    PLANNING_AGENT_PROMPT,
+    PLANNING_AGENT_PROMPT_NO_REVIEWER,
+    REVIEWER_AGENT_PROMPT,
+    SUMMARIZER_AGENT_PROMPT,
+)
+from core.tools import (
+    identify_chronological_query,
+    retrieve_fomc_documents,
+)
+
+
+async def init_group_chat(
+    user_input_func: Callable[[str, Optional[CancellationToken]], Awaitable[str]],
+):
+    # Get environment variables
+    llm_model = os.getenv("LLM_MODEL", "qwen/qwen3-8b:free")
+    llm_base_url = os.getenv("LLM_BASE_URL", "")
+    llm_api_key = os.getenv("LLM_API_KEY", "")
+    
+    print(llm_model, llm_base_url, llm_api_key)
+    print("="*300)
+    if not llm_api_key:
+        raise ValueError("LLM_API_KEY environment variable is not set")
+    
+    model_client = OpenAIChatCompletionClient(
+        model=llm_model,
+        base_url=llm_base_url,
+        api_key=llm_api_key,
+        model_info={
+            "json_output": True,
+            "function_calling": True,
+            "vision": False,
+            "family": "unknown",
+        },
+    )
+
+    planning_agent = AssistantAgent(
+        name="PlanningAgent",
+        description="An agent for planning tasks and identifying chronological queries, this agent should be the first to engage when given a new task.",
+        system_message=PLANNING_AGENT_PROMPT,
+        model_client=model_client,
+        tools=[identify_chronological_query],
+    )
+
+    fomc_agent = AssistantAgent(
+        name="FOMCAgent",
+        description="An ChromaDB retriever agent that retrieves documents from FOMC vector database, this agent must be engaged after PlanningAgent.",
+        system_message=FOMC_AGENT_PROMPT,
+        model_client=model_client,
+        tools=[retrieve_fomc_documents],
+    )
+
+    summarizer_agent = AssistantAgent(
+        name="SummarizerAgent",
+        description="An agent that compiles and structures responses into a detailed final answer, this agent should be engaged after ReviewerAgent.",
+        system_message=SUMMARIZER_AGENT_PROMPT,
+        model_client=model_client,
+    )
+
+    reviewer_agent = AssistantAgent(
+        name="ReviewerAgent",
+        description="An agent that evaluates the quality of retrieved documents and may request additional document retrieval if needed, this agent must be engaged after FOMCAgent.",
+        system_message=REVIEWER_AGENT_PROMPT,
+        model_client=model_client,
+    )
+
+    # define termination conditions
+    text_mention_termination = TextMentionTermination("TERMINATE")
+    max_messages_termination = MaxMessageTermination(max_messages=25)
+    termination = text_mention_termination | max_messages_termination
+
+    selector_prompt = """Select an agent to perform task.
+
+    {roles}
+
+    Current conversation context:
+    {history}
+
+    Read the above conversation, then select an agent from {participants} to perform the next task.
+    Make sure the PlanningAgent has assigned tasks before other agents start working.
+    Only select one agent.
+    """
+
+    user_proxy = UserProxyAgent(
+        name="user",
+        input_func=user_input_func,  # Use the user input function.
+    )
+
+    def selector_func(messages: Sequence[AgentEvent | ChatMessage]) -> str | None:
+        """
+        To define the flow of agent selection & ensure the process flows as expected.
+        """
+        # engage FOMCAgent first after PlanningAgent
+        if (
+            messages[-1].source == planning_agent.name
+            and messages[-1].type == "ToolCallSummaryMessage"
+        ):
+            return fomc_agent.name
+
+        # engage ReviewerAgent after FOMCAgent
+        elif (
+            messages[-1].source == fomc_agent.name
+            and messages[-1].type == "ToolCallSummaryMessage"
+        ):
+            return reviewer_agent.name
+
+        elif (
+            messages[-1].source == fomc_agent.name
+            and messages[-1].type == "TextMessage"
+        ):
+            # To ensure FOMCAgent make tool call, if it misbehaves after PlanningAgent
+            if not any(
+                message.source == fomc_agent.name
+                and message.type == "ToolCallSummaryMessage"
+                for message in messages
+            ):
+                return messages[-1].source
+
+            # engage ReviewerAgent if hasn't
+            if reviewer_agent.name not in [message.source for message in messages]:
+                return reviewer_agent.name
+
+        # engage SummarizerAgent after ReviewerAgent
+        elif (
+            messages[-1].source == reviewer_agent.name
+            and messages[-1].type == "TextMessage"
+        ):
+            return summarizer_agent.name
+
+        return None
+
+    team = SelectorGroupChat(
+        [
+            planning_agent,
+            fomc_agent,
+            reviewer_agent,
+            summarizer_agent,
+            user_proxy,
+        ],
+        model_client=model_client,
+        termination_condition=termination,
+        allow_repeated_speaker=True,
+        selector_prompt=selector_prompt,
+        selector_func=selector_func,
+    )
+
+    state_path = os.getenv("STATE_PATH")
+    print("STATE_PATH:", state_path)
+
+    # Load state from file.
+    # if not os.path.exists(state_path):
+    #     return team
+    # async with aiofiles.open(state_path, "r") as file:
+    #     state = json.loads(await file.read())
+    # await team.load_state(state)
+    return team
+
+
+async def test(query):
+    # model_client = AzureAIChatCompletionClient(
+    #     endpoint="https://mistral-small-2503-eqnqa.swedencentral.models.ai.azure.com/",
+    #     credential=AzureKeyCredential("0DmdAqfl4IQ2OKpnelm31btSzs4qQYNA"),
+    #     model_info={
+    #         "json_output": True,
+    #         "function_calling": True,
+    #         "vision": False,
+    #         "family": "unknown",
+    #     },
+    # )
+
+    # Get environment variables
+    llm_model = os.getenv("LLM_MODEL", "qwen/qwen3-8b:free")
+    llm_base_url = os.getenv("LLM_BASE_URL", "")
+    llm_api_key = os.getenv("LLM_API_KEY", "")
+    
+    if not llm_api_key:
+        raise ValueError("LLM_API_KEY environment variable is not set")
+    
+    model_client = OpenAIChatCompletionClient(
+        model=llm_model,
+        base_url=llm_base_url,
+        api_key=llm_api_key,
+        model_info={
+            "json_output": True,
+            "function_calling": True,
+            "vision": False,
+            "family": "unknown",
+        },
+    )
+
+    planning_agent = AssistantAgent(
+        name="PlanningAgent",
+        description="An agent for planning tasks and identifying chronological queries, this agent should be the first to engage when given a new task.",
+        system_message=PLANNING_AGENT_PROMPT,
+        model_client=model_client,
+        tools=[identify_chronological_query],
+    )
+
+    fomc_agent = AssistantAgent(
+        name="FOMCAgent",
+        description="An ChromaDB retriever agent that retrieves documents from FOMC vector database, this agent must be engaged after PlanningAgent.",
+        system_message=FOMC_AGENT_PROMPT,
+        model_client=model_client,
+        tools=[retrieve_fomc_documents],
+    )
+
+    summarizer_agent = AssistantAgent(
+        name="SummarizerAgent",
+        description="An agent that compiles and structures responses into a detailed final answer, this agent should be engaged after ReviewerAgent.",
+        system_message=SUMMARIZER_AGENT_PROMPT,
+        model_client=model_client,
+        # tools=[generate_response],
+    )
+
+    reviewer_agent = AssistantAgent(
+        name="ReviewerAgent",
+        description="An agent that evaluates the quality of retrieved documents and may request additional document retrieval if needed, this agent must be engaged after FOMCAgent.",
+        system_message=REVIEWER_AGENT_PROMPT,
+        model_client=model_client,
+        # tools=[],
+    )
+
+    text_mention_termination = TextMentionTermination("TERMINATE")
+    max_messages_termination = MaxMessageTermination(max_messages=25)
+    termination = text_mention_termination | max_messages_termination
+
+    selector_prompt = """Select an agent to perform task.
+
+    {roles}
+
+    Current conversation context:
+    {history}
+
+    Read the above conversation, then select an agent from {participants} to perform the next task.
+    Make sure the PlanningAgent has assigned tasks before other agents start working.
+    Only select one agent.
+    """
+
+    def selector_func(messages: Sequence[AgentEvent | ChatMessage]) -> str | None:
+        if (
+            messages[-1].source == planning_agent.name
+            and messages[-1].type == "ToolCallSummaryMessage"
+        ):
+            return fomc_agent.name
+
+        # engage ReviewerAgent after FOMCAgent
+        elif (
+            messages[-1].source == fomc_agent.name
+            and messages[-1].type == "ToolCallSummaryMessage"
+        ):
+            return reviewer_agent.name
+
+        elif (
+            messages[-1].source == fomc_agent.name
+            and messages[-1].type == "TextMessage"
+        ):
+            # To ensure FOMCAgent make tool call, if it misbehaves after PlanningAgent
+            if not any(
+                message.source == fomc_agent.name
+                and message.type == "ToolCallSummaryMessage"
+                for message in messages
+            ):
+                return messages[-1].source
+
+            # engage ReviewerAgent if hasn't
+            if reviewer_agent.name not in [message.source for message in messages]:
+                return reviewer_agent.name
+
+        # engage SummarizerAgent after ReviewerAgent
+        elif (
+            messages[-1].source == reviewer_agent.name
+            and messages[-1].type == "TextMessage"
+        ):
+            return summarizer_agent.name
+
+        return None
+
+    team = SelectorGroupChat(
+        [
+            planning_agent,
+            fomc_agent,
+            reviewer_agent,
+            summarizer_agent,
+        ],
+        model_client=model_client,
+        termination_condition=termination,
+        allow_repeated_speaker=True,
+        selector_prompt=selector_prompt,
+        selector_func=selector_func,
+    )
+
+    # query = "Trace the chronology of decisions related to federal fund rates from 2017 to 2019"
+    # query = "What are the decisions made on 28 Jan 2015 by unanimous vote?"
+    # query = "What were the main economic indicators discussed during the latest meeting, and what were the general sentiments regarding them?"
+    # query = "How did the views of different committee members align or diverge regarding interest rate adjustments?"
+    # query = "How did the decision to maintain the rate come to a conclusion?"
+    # query = "What was the timeline of discussions throughout the meeting, and how did the agenda progress from one topic to the next during the meeting on March 22, 2023?"
+    # query = "Referring to the meeting on 22 March 2023, what were the key milestones or decision points during the meeting, and how were they addressed chronologically?"
+    # query = "Referring to the meeting on 22 March 2023, how did past decisions, referenced during the meeting, affect the current decision-making process?"
+    # query = "Referring to the meeting on 22 March 2023, were there any shifts in opinion or strategy from the beginning to the end of the meeting? If so, what triggered these changes?"
+
+    start_time = time.time()
+    try:
+        await team.reset()
+    except Exception:
+        print("No reset needed")
+    finally:
+        results = await Console(team.run_stream(task=query))
+        results = results.messages
+        results.pop(0)
+
+        answer = []
+
+        for result in reversed(results):
+            # extract ToolCallSummaryMessage in JSON format (TextMessage is not in JSON format)
+            if (
+                result.source == summarizer_agent.name
+                and result.type == "ToolCallSummaryMessage"
+                or result.source == summarizer_agent.name
+                and result.type == "TextMessage"
+            ):
+                try:
+                    answer.append(json_repair.loads(result.content))
+                except Exception:
+                    continue
+                break
+
+        end_time = time.time()
+        exec_time = end_time - start_time
+        print(f"Execution time: {(end_time - start_time):.4f} seconds")
+
+    print(answer[0])
+    return {"answer": answer[0], "exec_time": exec_time}
+
+
+async def test_without_reviewer(query):
+    # Get environment variables
+    llm_model = os.getenv("LLM_MODEL", "qwen/qwen3-8b:free")
+    llm_base_url = os.getenv("LLM_BASE_URL", "")
+    llm_api_key = os.getenv("LLM_API_KEY", "")
+    
+    if not llm_api_key:
+        raise ValueError("LLM_API_KEY environment variable is not set")
+    
+    model_client = OpenAIChatCompletionClient(
+        model=llm_model,
+        base_url=llm_base_url,
+        api_key=llm_api_key,
+        model_info={
+            "json_output": True,
+            "function_calling": True,
+            "vision": False,
+            "family": "unknown",
+        },
+    )
+
+    planning_agent = AssistantAgent(
+        name="PlanningAgent",
+        description="An agent for planning tasks and identifying chronological queries, this agent should be the first to engage when given a new task.",
+        system_message=PLANNING_AGENT_PROMPT_NO_REVIEWER,
+        model_client=model_client,
+        tools=[identify_chronological_query],
+    )
+
+    fomc_agent = AssistantAgent(
+        name="FOMCAgent",
+        description="An ChromaDB retriever agent that retrieves documents from FOMC vector database, this agent must be engaged after PlanningAgent.",
+        system_message=FOMC_AGENT_PROMPT,
+        model_client=model_client,
+        tools=[retrieve_fomc_documents],
+    )
+
+    summarizer_agent = AssistantAgent(
+        name="SummarizerAgent",
+        description="An agent that compiles and structures responses into a detailed final answer, this agent should be engaged after FOMCAgent.",
+        system_message=SUMMARIZER_AGENT_PROMPT,
+        model_client=model_client,
+        # tools=[generate_response],
+    )
+
+    text_mention_termination = TextMentionTermination("TERMINATE")
+    max_messages_termination = MaxMessageTermination(max_messages=25)
+    termination = text_mention_termination | max_messages_termination
+
+    selector_prompt = """Select an agent to perform task.
+
+    {roles}
+
+    Current conversation context:
+    {history}
+
+    Read the above conversation, then select an agent from {participants} to perform the next task.
+    Make sure the PlanningAgent has assigned tasks before other agents start working.
+    Only select one agent.
+    """
+
+    def selector_func(messages: Sequence[AgentEvent | ChatMessage]) -> str | None:
+        if (
+            messages[-1].source == planning_agent.name
+            and messages[-1].type == "ToolCallSummaryMessage"
+        ):
+            return fomc_agent.name
+
+        # ensure FOMC agent completes all tool calls before engaging Summarizer agent
+        elif (
+            messages[-1].source == fomc_agent.name
+            and messages[-1].type == "ToolCallSummaryMessage"
+        ):
+            return summarizer_agent.name
+
+        elif (
+            messages[-1].source == fomc_agent.name
+            and messages[-1].type == "TextMessage"
+        ):
+            if not any(
+                message.source == fomc_agent.name
+                and message.type == "ToolCallSummaryMessage"
+                for message in messages
+            ):
+                return messages[-1].source
+
+            if summarizer_agent.name not in [message.source for message in messages]:
+                return summarizer_agent.name
+
+        return None
+
+    team = SelectorGroupChat(
+        [
+            planning_agent,
+            fomc_agent,
+            summarizer_agent,
+        ],
+        model_client=model_client,
+        termination_condition=termination,
+        allow_repeated_speaker=True,
+        selector_prompt=selector_prompt,
+        selector_func=selector_func,
+    )
+
+    # query = "Trace the chronology of decisions related to federal fund rates from 2017 to 2019"
+    # query = "What are the decisions made on 28 Jan 2015 by unanimous vote?"
+    # query = "What were the main economic indicators discussed during the latest meeting, and what were the general sentiments regarding them?"
+    # query = "How did the views of different committee members align or diverge regarding interest rate adjustments?"
+    # query = "How did the decision to maintain the rate come to a conclusion?"
+    # query = "What was the timeline of discussions throughout the meeting, and how did the agenda progress from one topic to the next during the meeting on March 22, 2023?"
+    # query = "Referring to the meeting on 22 March 2023, what were the key milestones or decision points during the meeting, and how were they addressed chronologically?"
+    # query = "Referring to the meeting on 22 March 2023, how did past decisions, referenced during the meeting, affect the current decision-making process?"
+    # query = "Referring to the meeting on 22 March 2023, were there any shifts in opinion or strategy from the beginning to the end of the meeting? If so, what triggered these changes?"
+
+    start_time = time.time()
+    try:
+        await team.reset()
+    except Exception:
+        print("No reset needed")
+    finally:
+        results = await Console(team.run_stream(task=query))
+        results = results.messages
+        results.pop(0)
+
+        answer = []
+
+        for result in reversed(results):
+            # extract ToolCallSummaryMessage in JSON format (TextMessage is not in JSON format)
+            if (
+                result.source == summarizer_agent.name
+                and result.type == "ToolCallSummaryMessage"
+                or result.source == summarizer_agent.name
+                and result.type == "TextMessage"
+            ):
+                try:
+                    answer.append(json_repair.loads(result.content))
+                except Exception:
+                    continue
+                break
+
+        end_time = time.time()
+        exec_time = end_time - start_time
+        print(f"Execution time: {(end_time - start_time):.4f} seconds")
+
+    print(answer[0])
+    return {"answer": answer[0], "exec_time": exec_time}
+
+
+===============================================
+File: core/chroma_db.py
+===============================================
+
+import chromadb
+import asyncio
+import nest_asyncio
+from typing import List
+import uvloop
+
+from llama_index.core import StorageContext, VectorStoreIndex
+from llama_index.core.ingestion import IngestionPipeline
+from llama_index.core.extractors import QuestionsAnsweredExtractor
+from llama_index.core.node_parser import TokenTextSplitter
+from llama_index.embeddings.azure_openai import AzureOpenAIEmbedding
+from llama_index.llms.azure_inference import AzureAICompletionsModel
+from llama_index.vector_stores.chroma import ChromaVectorStore
+
+
+class ChromaDB:
+    """
+    This class manages interactions with a Chroma-based vector database, allowing for the creation and retrieval of vector store indices.
+    """
+
+    def __init__(self, db_path: str):
+        # Initializes a ChromaDB instance with a specified database path
+        self.chromadb_client = chromadb.PersistentClient(path=db_path)
+
+    def create_vector_store_index(
+        self,
+        collection_name: str,
+        documents: list,
+        chunk_size: int,
+        embed_model: AzureOpenAIEmbedding,
+        llm: AzureAICompletionsModel,
+    ):
+        """Creates a new vector store index by processing documents and adding them to a collection in the Chroma database."""
+        try:
+            text_splitter = TokenTextSplitter(chunk_size=chunk_size, chunk_overlap=20)
+
+            chroma_collection = self.chromadb_client.create_collection(
+                name=collection_name
+            )
+            vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+            storage_context = StorageContext.from_defaults(vector_store=vector_store)
+
+            qa_extractor = QuestionsAnsweredExtractor(questions=2, llm=llm)
+            # keyword_extractor = KeywordExtractor(keywords=10, llm=llm)
+
+            vector_index = VectorStoreIndex.from_documents(
+                documents=documents,
+                # transformations=[text_splitter, qa_extractor, keyword_extractor],
+                transformations=[text_splitter, qa_extractor],
+                storage_context=storage_context,
+                show_progress=True,
+                embed_model=embed_model,
+            )
+
+            print(
+                f"Added {chroma_collection.count()} documents into collection '{collection_name}'."
+            )
+
+            return vector_index
+
+        except Exception as e:
+            print(e)
+
+    def get_vector_store_index(
+        self, collection_name: str, embed_model: AzureOpenAIEmbedding
+    ) -> VectorStoreIndex:
+        """Retrieves a vector store index from a specified collection within the Chroma database."""
+        try:
+            chroma_collection = self.chromadb_client.get_collection(
+                name=collection_name
+            )
+            vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+            vector_index = VectorStoreIndex.from_vector_store(
+                vector_store,
+                embed_model=embed_model,
+            )
+
+        except Exception as e:
+            print(e)
+
+        return vector_index
+
+    def get_latest_document_date(self, collection_name: str) -> str:
+        """
+        Retrieves the date of the last document from a collection within the Chroma database.
+        """
+        try:
+            chroma_collection = self.chromadb_client.get_collection(
+                name=collection_name
+            )
+            date = str(chroma_collection.get()["metadatas"][-1]["date"])
+
+        except Exception as e:
+            print(e)
+
+        return date
+
+    def add_documents(
+        self,
+        documents: list,
+        collection_name: str,
+        chunk_size: int,
+        embed_model: AzureOpenAIEmbedding,
+        llm: AzureAICompletionsModel,
+    ):
+        """
+        Add new document(s) to a collection within the Chroma database.
+        """
+        text_splitter = TokenTextSplitter(chunk_size=chunk_size, chunk_overlap=20)
+
+        try:
+            chroma_collection = self.chromadb_client.get_collection(
+                name=collection_name
+            )
+        except Exception as e:
+            print(f"Error retrieving collection {collection_name} from Chroma DB: {e}")
+            return
+
+        vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+        storage_context = StorageContext.from_defaults(vector_store=vector_store)
+        vector_index = VectorStoreIndex.from_vector_store(
+            vector_store,
+            embed_model=embed_model,
+        )
+
+        qa_extractor = QuestionsAnsweredExtractor(questions=2, llm=llm)
+        # keyword_extractor = KeywordExtractor(keywords=10, llm=llm)
+
+        vector_index._transformations = [
+            text_splitter,
+            qa_extractor,
+        ]
+        vector_index._storage_context = storage_context
+        vector_index._show_progress = True
+
+        for doc in documents:
+            vector_index.insert(document=doc)
+
+        print(f"Added {len(documents)} documents into collection '{collection_name}'.")
+
+        return vector_index
+    
+    def create_collection(self, collection_name: str):
+        """
+        Create a new collection in the Chroma database.
+        """
+        try:
+            self.chromadb_client.create_collection(name=collection_name)
+            print(f"Collection '{collection_name}' created successfully.")
+        except Exception as e:
+            print(f"Error creating collection {collection_name}: {e}")
+
+    def list_collections(self):
+        """
+        List all collections in the Chroma database.
+        """
+        try:
+            collections = self.chromadb_client.list_collections()
+            return collections
+        except Exception as e:
+            print(f"Error listing collections: {e}")
+            return []
+    def list_documents(self, collection_name):
+        """
+        List all documents in a collection within the Chroma database.
+        """
+        try:
+            collection = self.chromadb_client.get_collection(collection_name)
+            results = collection.get(include=["metadatas"])
+            
+            doc_info = {}
+            for metadata in results["metadatas"]:
+                doc_id = metadata.get("doc_id")
+                if doc_id:
+                    if doc_id not in doc_info:
+                        doc_info[doc_id] = {
+                            "date": metadata.get("date"),
+                            "source": metadata.get("source"),
+                            "chunk_count": 0
+                        }
+                    doc_info[doc_id]["chunk_count"] += 1
+            
+            # Convert to list of dicts
+            doc_list = [{"doc_id": k, **v} for k, v in doc_info.items()]
+            # Sort by doc_id
+            return sorted(doc_list, key=lambda x: x['doc_id'])
+
+        except Exception as e:
+            print(f"Error listing documents: {e}")
+            return []
+
+    def delete_documents(self, collection_name, doc_id: str):
+        """
+        Delete existing document(s) from a collection within the Chroma database.
+        """
+        try:
+            collection = self.chromadb_client.get_collection(collection_name)
+            collection.delete(where={"doc_id": doc_id})
+            print(f"Deleted document with doc_id '{doc_id}' from collection '{collection_name}'.")
+        except Exception as e:
+            print(f"Error deleting documents: {e}")
+
+
+===============================================
+File: core/embeddings.py
+===============================================
+
+from llama_index.embeddings.azure_openai import AzureOpenAIEmbedding
+
+BASE_URL_EMBED = "https://oai-genai-test-cne-002.openai.azure.com/"
+API_KEY_EMBED = "226375612a974f6f9d17d95b4e71d691"
+DEPLOYMENT_NAME_EMBED = "text-embedding-ada-002-2-001"
+DEPLOYMENT_NAME_EMBED_FILEUPLOAD = "text-embedding-3-small"
+API_VERSION_EMB = "2023-07-01-preview"
+
+embed_model = AzureOpenAIEmbedding(
+    model="text-embedding-ada-002",
+    deployment_name=DEPLOYMENT_NAME_EMBED,
+    api_key=API_KEY_EMBED,
+    azure_endpoint=BASE_URL_EMBED,
+    api_version=API_VERSION_EMB,
+)
+
+# import os
+# EMBED_MODEL = os.getenv("EMBED_MODEL")
+# EMBED_BASE_URL = os.getenv("EMBED_BASE_URL")
+# EMBED_API_KEY = os.getenv("EMBED_API_KEY")
+
+# from llama_index.embeddings.openai_like import OpenAILikeEmbedding
+
+# embed_model = OpenAILikeEmbedding(
+#     model_name=EMBED_MODEL,
+#     api_base=EMBED_BASE_URL,
+#     api_key=EMBED_API_KEY,
+# )
+
+===============================================
+File: core/llm.py
+===============================================
+
+import json_repair
+import os
+from llama_index.core.llms import ChatMessage
+from llama_index.llms.openai_like import OpenAILike
+
+
+class LLM:
+    def __init__(self):
+        # Get environment variables with fallbacks
+        llm_model = os.getenv("LLM_MODEL", "qwen/qwen3-8b:free")
+        llm_base_url = os.getenv("LLM_BASE_URL", "")
+        llm_api_key = os.getenv("LLM_API_KEY", "")
+        
+        if not llm_api_key:
+            raise ValueError("LLM_API_KEY environment variable is not set")
+            
+        self.llm = OpenAILike(
+            model=llm_model,
+            api_base=llm_base_url,
+            api_key=llm_api_key,
+            context_window=32000,
+            is_chat_model=True,
+            is_function_calling_model=True,
+            # api_version="2024-05-01-preview",
+            # engine="Qwen/Qwen2.5-14B-Instruct"
+        )
+
+    def call_llm(self, content: str):
+        response = self.llm.chat(
+            messages=[
+                ChatMessage(role="system", content="You are a helpful assistant."),
+                ChatMessage(role="user", content=content),
+            ],
+        )
+        return json_repair.loads(response.message.blocks[0].text)
+
+    def get_llm(self) -> OpenAILike:
+        return self.llm
+
+
+===============================================
+File: core/preprocess.py
+===============================================
+
+import pandas as pd
+from llama_index.core import Document
+
+
+def preprocess_data() -> list:
+    """
+    concatenate meeting minutes, group by date & convert into Documents object
+    """
+    df = pd.read_csv("./data/Fed_Scrape-2015-2023.csv", encoding="utf-8", index_col=0)
+
+    # retrieve document type "1: minutes"
+    df = df[df["Type"] == 1].copy()
+
+    # reformat date
+    df["Date"] = pd.to_datetime(df["Date"], format="%Y%m%d")
+
+    # consolidate document into one row
+    df = df.groupby(["Date", "Type"])["Text"].agg("\n".join).reset_index()
+
+    # reformat to yyyymmdd & int for metadata filtering later
+    df["Date"] = df["Date"].astype(str).str.replace("-", "").astype(int)
+
+    documents = []
+
+    for index, row in df.iterrows():
+        # create Document object
+        documents.append(
+            Document(
+                text=row["Text"],
+                metadata={
+                    "doc_id": index,
+                    "date": row["Date"],
+                },
+            )
+        )
+
+    print(f"Created {len(documents)} documents.")
+    return documents
+
+
+===============================================
+File: core/prompts.py
+===============================================
+
+CHRONOLOGICAL_PROMPT = """
+Your task is to determine if a user query involves a chronological issue. 
+If it does, break down the content by each relevant year, as shown in the sample below:
+
+Original Query: "What is the interest from 2015 to 2017?"
+Subquery: ["What is the interest rate from 2015?", "What is the interest rate from 2016?", "What is the interest rate from 2017?"]
+
+Additionally, if the user specifies a specific date range, extract and highlight the start and end dates from the query. 
+For a single date, use it as both the start and end.
+For a year-only mention, set the start to January 1st and the end to December 31st of that year.
+For a range from one year to another, start on January 1st of the first year and end on December 31st of the last year.
+If the query specifies "latest meeting", set the start and end dates as "99991231".
+If no date is specified, return null for both dates.
+
+The output should be a markdown code snippet formatted in the following schema, including the leading and trailing "```json" and "```":
+```json
+{{
+    "is_chronological": bool // True or False
+    "subquery": list[str] // List of subqueries if chronological issue, or original query if not
+    "start_date": string // the start date: 'yyyy-mm-dd' or null,
+    "end_date": string // the end date: 'yyyy-mm-dd' or null,
+}}
+```
+
+TEXT:
+{query}
+
+OUTPUT:
+"""
+
+
+GENERATE_ANSWER_PROMPT = """
+Your role is to assist users by:
+1. Tracking Decisions: Trace the sequence of decisions across multiple meeting documents, providing clear and chronological narratives.
+2. Analyzing Stances: Summarize participants' views on specific topics, highlighting consensus or dissent.
+
+Usage Instructions:
+1. Specify dates, participants, and documents where possible for reliability.
+2. Consolidate information from multiple meetings for comprehensive overviews.
+3. Summarize key arguments and note any changes in opinions over time.
+4. Label the "source" as "FOMC Meeting Minutes {{date}}" if it is from FOMCAgent.
+
+The output should be a markdown code snippet formatted in the following schema, including the leading and trailing "```json" and "```":
+```json
+{{
+    "answer": string // the answer generated - Include the dates when the decisions are made, ordered from the earliest to the latest,
+    "sources": list // sources: "FOMC Meeting Minutes {{date}}",
+}}
+```
+
+CONTEXT (the Date is in the format of yyyymmdd):
+{context}
+
+QUERY:
+{query}
+
+OUTPUT:
+"""
+# 3. Multi-Document Synthesis: Integrate and present information from various documents cohesively and logically.
+# 4. Clarity and Accuracy: Ensure responses are accurate, clear, and user-friendly, making complex information accessible.
+# Your goal is to be a reliable and insightful assistant, enhancing users' understanding of meeting dynamics and decision-making processes.
+
+
+PLANNING_AGENT_PROMPT = """
+You are an agent responsible for planning and delegating tasks.
+
+Team members:
+    1. FOMCAgent: Retrieves documents from the FOMC vector database using metadata filters.
+    2. ReviewerAgent: Evaluates the quality of retrieved documents and may request additional document retrieval if needed.
+    3. SummarizerAgent: Compiles and structures responses from other agents into a detailed final answer.
+
+When assigning tasks, follow this format:
+1. <agent> : <task>
+
+Steps:
+   1. Call the function 'identify_chronological_query' to check if a user query involves chronological elements. Save the output.
+   2. Instruct the team member 'FOMCAgent' to execute the function tool for each subquery simultaneously. Wait for the agent to complete before proceeding.
+   3. Instruct the team member 'ReviewerAgent' to evaluate the quality of retrieved documents.
+   4. If the ReviewerAgent is not satisfied with the output, instruct the team member 'FOMCAgent'. Otherwise, instruct the team member 'SummarizerAgent' to compile responses and produce a comprehensive final answer.
+
+You only plan and delegate tasks, not executing them.
+Before each action is executed, please clearly inform the user of your execution plan.
+Remember, You must not summarize the response, ensure it is detailed and well-structured.
+"""
+
+
+FOMC_AGENT_PROMPT = """
+You are an agent that retrieves the relevant context based on the metadata filter from a FOMC vector database.
+You MUST call the 'retrieve_fomc_documents' tool to answer questions and NOT your own memory or web information.
+If there are multiple subqueries, make a tool call for each subquery - you MUST modify the start and end dates for each subquery year.
+Else, use the exact value of start and end dates from 'PlanningAgent'.
+If you do not know the arguments value, get them from the 'PlanningAgent'.
+If you need additional data, ask for it.
+"""
+# Use the exact value of start and end dates from 'PlanningAgent'. If there are subqueries by year, you MUST modify the start and end dates for each year.
+# If the dates are null, leave it - DO NOT modify or make assumptions of the start and end dates.
+
+
+REVIEWER_AGENT_PROMPT = """
+You are an agent that evaluates the quality of documents retrieved by FOMCAgent.
+You only review the quality of documents - DO NOT summarize them.
+Only review the response of an agent that has actually responded. If an agent has not responded, clearly indicate that there is no response from that agent.
+You may request additional document retrieval if you are not satisfied with the quality of context.
+Do not review the content of SummarizerAgent.
+"""
+
+
+SUMMARIZER_AGENT_PROMPT = """
+You are an agent that generates summary that traces the sequence of decisions across multiple meeting documents, providing clear and chronological narratives.
+If you do not know the context, get and compile from previous responses - DO NOT look up for the answers yourself.
+
+Your role is to assist users by:
+1. Tracking Decisions: Trace the sequence of decisions across multiple meeting documents, providing clear and chronological narratives.
+2. Analyzing Stances: Summarize participants' views on specific topics, highlighting consensus or dissent.
+
+Usage Instructions:
+1. Specify dates, participants, and documents where possible for reliability.
+2. Consolidate information from multiple meetings for comprehensive overviews.
+3. Summarize key arguments and note any changes in opinions over time.
+4. Label the "source" as "FOMC Meeting Minutes {{date}}" if it is from FOMCAgent.
+
+The output should be purely a markdown code snippet formatted in the following schema, including the leading and trailing "```json" and "```":
+```json
+{{
+    "answer": string // The detailed summary, including meeting dates, ordered from the earliest to the latest date,
+    "sources": list // sources: "FOMC Meeting Minutes {{date}}",
+}}
+```
+
+After you are done and no refinement is needed, you must end with "TERMINATE".
+"""
+# You MUST call the 'generate_response' function tool.
+# Use only the function to answer questions and NOT your own memory.
+
+
+PLANNING_AGENT_PROMPT_NO_REVIEWER = """
+You are an agent responsible for planning and delegating tasks.
+
+Team members:
+    1. FOMCAgent: Retrieves documents from the FOMC vector database using metadata filters.
+    2. SummarizerAgent: Compiles and structures responses from other agents into a detailed final answer.
+
+When assigning tasks, follow this format:
+1. <agent> : <task>
+
+Steps:
+   1. Call the function 'identify_chronological_query' to check if a user query involves chronological elements. Save the output.
+   2. Instruct the team member 'FOMCAgent' to execute the function tool for each subquery simultaneously. Wait for the agent to complete before proceeding.
+   3. Instruct the team member 'SummarizerAgent' to compile responses and produce a comprehensive final answer.
+
+You only plan and delegate tasks, not executing them.
+Before each action is executed, please clearly inform the user of your execution plan.
+Remember, You must not summarize the response, ensure it is detailed and well-structured.
+"""
+
+
+===============================================
+File: core/query_engine.py
+===============================================
+
+from typing import Optional
+
+from llama_index.core import VectorStoreIndex
+from llama_index.core.tools import QueryEngineTool
+from llama_index.core.vector_stores.types import (
+    FilterOperator,
+    MetadataFilter,
+    MetadataFilters,
+)
+
+from core.llm import LLM
+
+
+class QueryEngine:
+    def __init__(self):
+        """Initialize the QueryEngine with a language model."""
+        self.llm = LLM().get_llm()
+        self.query_engine = None
+
+    def create_query_engine(
+        self,
+        vector_index: VectorStoreIndex,
+        k: int,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ):
+        """
+        This function create a query engine using a vector store index, with an optional date filter.
+
+        Parameters:
+        - vector_index: VectorStoreIndex
+            The index to query against.
+        - k: int
+            The number of top similar documents to retrieve.
+        - start_date: Optional[str]
+            The start date to filter documents.
+        - end_date: Optional[str]
+            The end date to filter documents.
+        """
+        filters = []
+
+        if start_date:
+            start_date_int = int(start_date.replace("-", ""))
+            filters.append(
+                MetadataFilter(
+                    key="date", value=start_date_int, operator=FilterOperator.GTE
+                )
+            )
+        if end_date:
+            end_date_int = int(end_date.replace("-", ""))
+            filters.append(
+                MetadataFilter(
+                    key="date", value=end_date_int, operator=FilterOperator.LTE
+                )
+            )
+
+        # Query Data
+        self.query_engine = vector_index.as_query_engine(
+            similarity_top_k=k, filters=MetadataFilters(filters=filters), llm=self.llm
+        )
+
+    def create_query_engine_tool(self, name: str, description: str) -> QueryEngineTool:
+        """
+        Create and return a QueryEngineTool using the current query engine.
+
+        Returns:
+        - An instance of QueryEngineTool initialized with the current query engine.
+        """
+        if not self.query_engine:
+            raise ValueError(
+                "Query engine is not initialized. Please create it by calling create_query_engine()."
+            )
+        return QueryEngineTool.from_defaults(
+            query_engine=self.query_engine,
+            name=name,
+            description=description,
+        )
+
+    def execute_query(self, query: str):
+        """
+        Execute a query using the query engine.
+
+        Returns:
+        - The result of the query as a string.
+        """
+        if not self.query_engine:
+            raise ValueError(
+                "Query engine is not initialized. Please create it by calling create_query_engine()."
+            )
+        try:
+            results = self.query_engine.query(query)
+        except Exception as e:
+            print(e)
+        return results
+
+
+===============================================
+File: core/schema.py
+===============================================
+
+from pydantic import BaseModel
+
+
+class Dates(BaseModel):
+    start_date: str
+    end_date: str
+
+
+class Response(BaseModel):
+    answer: str
+    sources: list[str]
+
+class ChatMessageInput(BaseModel):
+    content: str
+    type: str
+    source: str
+    user_id: str
+    session_id: str
+
+class AgentMessageOutput(BaseModel):
+    source: str
+    models_usage: dict | None = None
+    metadata: dict = {}
+    content: str
+    type: str
+
+
+===============================================
+File: core/tools.py
+===============================================
+
+from typing import Optional
+
+from core.chroma_db import ChromaDB
+from core.embeddings import embed_model
+from core.llm import LLM
+from core.prompts import CHRONOLOGICAL_PROMPT, GENERATE_ANSWER_PROMPT
+from core.query_engine import QueryEngine
+
+CHROMA_DB_PATH = "./chroma-data"
+K = 10
+COLLECTION_NAME_FOMC = "fomc_chunk_256_metadata"
+
+# CHROMA_DB_PATH = "./chroma_db"
+# K = 10
+# COLLECTION_NAME_FOMC = "jina_fomc_256_metadata_002"
+# COLLECTION_NAME_COMMITTEE = "jina_fomc_256_metadata_002"
+
+SOURCE_NAME_FOMC = "FOMC Meeting Minutes"
+
+
+def identify_chronological_query(
+    query: str,
+) -> tuple[bool, list[str], Optional[str], Optional[str]]:
+    """
+    This function checks whether a user query involves a chronological issue and provides relevant details.
+
+    Returns:
+        - is_chronological: True if the query is a chronological issue.
+        - subquery: A list of subqueries extracted from the query.
+        - start_date: The start date for filtering results during document retrieval.
+        - end_date: The end date for filtering results during document retrieval.
+
+    Raises:
+        - Exception: If the response is not a dictionary.
+    """
+    prompt = CHRONOLOGICAL_PROMPT.format(query=query)
+
+    response = LLM().call_llm(prompt)
+
+    # verify response format
+    if response and isinstance(response, dict):
+        is_chronological = bool(response.get("is_chronological"))
+        subquery = response.get("subquery", [])
+        start_date = response.get("start_date")
+        end_date = response.get("end_date")
+
+    else:
+        raise Exception("Error dissecting user query!")
+
+    return is_chronological, subquery, start_date, end_date
+
+
+def retrieve_documents(
+    source: str,
+    query: str,
+    collection_name: str,
+    k: int,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> str:
+    """
+    This function filters and retrieves documents from a vector store using specified dates, and combines them into a coherent context.
+
+    Parameters:
+        - query: The query string to process.
+        - collection_name: The collection name in Chroma DB.
+        - k: The number of top similar results to retrieve.
+        - start_date: The start date for filtering results (optional).
+        - end_date: The end date for filtering results (optional).
+
+    Returns:
+        - A consolidated string of relevant documents.
+    """
+    # define chroma db path
+    chromadb_client = ChromaDB(db_path=CHROMA_DB_PATH)
+
+    # get the date of the last doc
+    latest_doc_date = chromadb_client.get_latest_document_date(collection_name)
+    print(f"Latest document date: {latest_doc_date}")
+
+    # validate the start and end dates from PlanningAgent
+    if start_date is not None and int(start_date.replace("-", "")) > int(
+        latest_doc_date
+    ):
+        print(
+            f"[Error] start_date '{start_date}' is invalid. Replacing with the latest document date '{latest_doc_date}'..."
+        )
+        start_date = latest_doc_date
+    if end_date is not None and int(end_date.replace("-", "")) > int(latest_doc_date):
+        print(
+            f"[Error] end_date '{end_date}' is invalid. Replacing with the latest document date '{latest_doc_date}'..."
+        )
+        end_date = latest_doc_date
+
+    vector_index = chromadb_client.get_vector_store_index(
+        collection_name=collection_name, embed_model=embed_model
+    )
+
+    # query data
+    query_engine = QueryEngine()
+    query_engine.create_query_engine(
+        vector_index=vector_index,
+        k=k,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    retrieved_docs = query_engine.execute_query(query)
+
+    context = f"""
+    # Context ({source})
+    """
+
+    for i in range(k):
+        context += f"""
+    Source: {source}, Date: {retrieved_docs.source_nodes[i].node.metadata["date"]}, Content: {retrieved_docs.source_nodes[i].node.text}
+
+    """
+
+    return context
+
+
+def retrieve_fomc_documents(
+    query: str, start_date: Optional[str], end_date: Optional[str]
+) -> str:
+    """
+    This function filters and retrieves documents from the FOMC vector store using specified dates, and combines them into a coherent context.
+
+    Parameters:
+        - query: The query string to process.
+        - start_date: The start date for filtering results (optional).
+        - end_date: The end date for filtering results (optional).
+
+    Returns:
+        - A consolidated string of relevant documents from FOMC vector database.
+    """
+
+    return retrieve_documents(
+        source=SOURCE_NAME_FOMC,
+        collection_name=COLLECTION_NAME_FOMC,
+        query=query,
+        k=K,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+def generate_response(query: str, context: str):
+    """
+    This function generates a response using the context from retrieved documents.
+
+    Parameters:
+        - query: The query string to process.
+        - context: A consolidated string of relevant documents.
+
+    Returns:
+        - The response generated by LLM.
+    """
+    prompt = GENERATE_ANSWER_PROMPT.format(context=context, query=query)
+
+    # get the response from LLM
+    response = LLM().call_llm(prompt)
+    return response
+
+
+===============================================
+File: db/chroma_db/chroma.sqlite3
+===============================================
+
+[Non-text file]
+
+===============================================
+File: local/team_state.json
+===============================================
+
+[]
+
+===============================================
+File: static/index.html
+===============================================
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCBot</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #10a37f;
+            --primary-hover: #0e8e6f;
+            --primary-light: #e9f7f4;
+            --secondary-color: #6c757d;
+            --danger-color: #dc3545;
+            --danger-hover: #bd2130;
+            --light-bg: #f8f9fa;
+            --dark-bg: #202123;
+            --darker-bg: #0f1011;
+            --border-color: #dee2e6;
+            --chat-bg: #ffffff;
+            --user-message-bg: #f7f7f8;
+            --assistant-message-bg: #ffffff;
+            --sidebar-width: 280px;
+            --header-height: 60px;
+            --footer-height: 80px;
+            --transition-speed: 0.3s;
+            --box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+            --border-radius: 8px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: var(--light-bg);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            color: #343541;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #d1d5db;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: var(--sidebar-width);
+            height: 100vh;
+            background-color: var(--dark-bg);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            transition: transform var(--transition-speed) ease, width var(--transition-speed) ease;
+            z-index: 100;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            height: var(--header-height);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar-header h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sidebar-header h1 i {
+            color: var(--primary-color);
+        }
+
+        .chat-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .chat-list-header {
+            font-size: 0.8rem;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 10px 15px 5px;
+        }
+
+        .chat-item {
+            padding: 12px 15px;
+            border-radius: var(--border-radius);
+            margin-bottom: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+        }
+
+        .chat-item:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .chat-item.active {
+            background-color: rgba(255, 255, 255, 0.2);
+            font-weight: 500;
+        }
+
+        .chat-item i {
+            font-size: 16px;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .chat-item .chat-title {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 0.95rem;
+        }
+
+        .chat-item .chat-options {
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .chat-item:hover .chat-options {
+            opacity: 1;
+        }
+
+        .sidebar-footer {
+            padding: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .new-chat-btn {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: background-color 0.2s;
+            font-weight: 500;
+        }
+
+        .new-chat-btn:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            gap: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+        }
+
+        .user-profile:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+        }
+
+        .user-info {
+            flex: 1;
+        }
+
+        .user-name {
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+
+        .user-status {
+            font-size: 0.8rem;
+            color: #9ca3af;
+        }
+
+        /* Main Content Styles */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: var(--chat-bg);
+        }
+
+        .chat-header {
+            height: var(--header-height);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            background-color: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .chat-header-title {
+            font-size: 1.1rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .model-selector {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.9rem;
+            color: var(--secondary-color);
+            margin-left: 15px;
+            padding: 5px 10px;
+            border-radius: 15px;
+            background-color: #f1f5f9;
+            cursor: pointer;
+        }
+
+        .model-selector:hover {
+            background-color: #e2e8f0;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .header-button {
+            padding: 8px 12px;
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: background-color 0.2s, color 0.2s;
+        }
+
+        .header-button:hover {
+            background-color: var(--light-bg);
+        }
+
+        #clear-button {
+            color: var(--danger-color);
+            border-color: var(--danger-color);
+        }
+
+        #clear-button:hover {
+            background-color: var(--danger-color);
+            color: white;
+        }
+
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            background-color: var(--light-bg);
+            background-image: radial-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        .welcome-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .welcome-title {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: var(--dark-bg);
+        }
+
+        .welcome-subtitle {
+            font-size: 1.1rem;
+            color: var(--secondary-color);
+            margin-bottom: 30px;
+        }
+
+        .welcome-suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .suggestion-item {
+            padding: 12px 15px;
+            background-color: white;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 0.95rem;
+        }
+
+        .suggestion-item:hover {
+            background-color: var(--primary-light);
+            border-color: var(--primary-color);
+        }
+
+        #messages {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .message {
+            margin-bottom: 24px;
+            max-width: 100%;
+            position: relative;
+        }
+
+        .message.system, .message.error {
+            max-width: 95%;
+            margin: 15px auto;
+        }
+
+        .label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .message.assistant .label {
+            color: var(--primary-color);
+        }
+
+        .message.user .label {
+            color: var(--secondary-color);
+        }
+
+        .label-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+        }
+
+        .message.user .label-avatar {
+            background-color: var(--secondary-color);
+        }
+
+        .content {
+            padding: 16px 20px;
+            border-radius: 12px;
+            box-shadow: var(--box-shadow);
+            position: relative;
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        .message.user .content {
+            background-color: var(--user-message-bg);
+        }
+
+        .message.assistant .content {
+            background-color: var(--assistant-message-bg);
+        }
+
+        .message.system .content {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .message.error .content {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .message-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 8px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .message:hover .message-actions {
+            opacity: 1;
+        }
+
+        .message-action-btn {
+            padding: 5px 10px;
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            color: var(--secondary-color);
+            transition: background-color 0.2s;
+        }
+
+        .message-action-btn:hover {
+            background-color: var(--light-bg);
+        }
+
+        /* Input area */
+        .chat-footer {
+            min-height: var(--footer-height);
+            padding: 15px 20px;
+            background-color: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-top: 1px solid var(--border-color);
+            position: sticky;
+            bottom: 0;
+        }
+
+        .input-container-wrapper {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        #input-container {
+            display: flex;
+            align-items: flex-end;
+            background-color: white;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            box-shadow: var(--box-shadow);
+            transition: border-color 0.2s;
+        }
+
+        #input-container:focus-within {
+            border-color: var(--primary-color);
+        }
+
+        #message-input {
+            flex: 1;
+            border: none;
+            background: transparent;
+            padding: 8px 5px;
+            font-size: 0.95rem;
+            outline: none;
+            max-height: 200px;
+            resize: none;
+            line-height: 1.5;
+        }
+
+        .input-buttons {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .input-action-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: transparent;
+            color: var(--secondary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 16px;
+        }
+
+        .input-action-btn:hover {
+            background-color: var(--light-bg);
+        }
+
+        #send-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.2s;
+        }
+
+        #send-button:hover {
+            background-color: var(--primary-hover);
+            transform: scale(1.05);
+        }
+
+        #input-container input:disabled,
+        #input-container button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .input-footer {
+            color: var(--secondary-color);
+            font-size: 0.8rem;
+            margin-top: 5px;
+            text-align: center;
+        }
+
+        /* Details/Collapsible styles */
+        details {
+            margin: 15px 0;
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            background-color: white;
+            box-shadow: var(--box-shadow);
+        }
+
+        details summary {
+            padding: 12px 15px;
+            background-color: #f0f4f8;
+            font-weight: 500;
+            cursor: pointer;
+            position: relative;
+            border-bottom: 1px solid #e0e5eb;
+            outline: none;
+        }
+
+        details summary:hover {
+            background-color: #e4ebf3;
+        }
+
+        details[open] summary {
+            border-bottom-color: #d0d7e0;
+        }
+
+        details .content {
+            background-color: white;
+            padding: 15px;
+            border-radius: 0;
+            box-shadow: none;
+        }
+
+        /* Markdown styles */
+        .content p {
+            margin: 0.7em 0;
+            line-height: 1.6;
+        }
+        
+        .content h1, .content h2, .content h3, .content h4, .content h5, .content h6 {
+            margin-top: 1.2em;
+            margin-bottom: 0.7em;
+            font-weight: 600;
+            line-height: 1.25;
+        }
+        
+        .content code {
+            background-color: #f3f4f6;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+            font-size: 0.9em;
+        }
+        
+        .content pre {
+            background-color: #f5f7f9;
+            padding: 12px 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 1em 0;
+            line-height: 1.45;
+        }
+        
+        .content pre code {
+            background-color: transparent;
+            padding: 0;
+            font-size: 0.9em;
+        }
+        
+        .content blockquote {
+            border-left: 4px solid #cbd5e0;
+            margin-left: 0;
+            padding: 10px 20px;
+            color: #64748b;
+            background-color: #f8fafc;
+            margin: 1em 0;
+        }
+        
+        .content ul, .content ol {
+            padding-left: 24px;
+            margin: 1em 0;
+        }
+        
+        .content a {
+            color: #3182ce;
+            text-decoration: none;
+        }
+        
+        .content a:hover {
+            text-decoration: underline;
+        }
+        
+        .content table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 1em 0;
+            overflow-x: auto;
+            display: block;
+        }
+        
+        .content th, .content td {
+            border: 1px solid #e2e8f0;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        
+        .content th {
+            background-color: #f1f5f9;
+            font-weight: 600;
+        }
+        
+        .content tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+        
+        /* JSON specific styles */
+        .json-content {
+            font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+            line-height: 1.5;
+            font-size: 0.9em;
+            background-color: #f0f7ff !important;
+            padding: 15px !important;
+            border-radius: 6px !important;
+            border: 1px solid #d0e1fa !important;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: absolute;
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+                z-index: 1000;
+            }
+            
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            
+            .menu-toggle {
+                display: block !important;
+            }
+            
+            .message {
+                max-width: 100%;
+            }
+
+            .welcome-title {
+                font-size: 1.5rem;
+            }
+
+            .welcome-subtitle {
+                font-size: 1rem;
+            }
+        }
+
+        /* For mobile */
+        @media (max-width: 480px) {
+            .chat-header, .chat-footer {
+                padding: 10px;
+            }
+
+            .model-selector {
+                display: none;
+            }
+
+            .suggestion-item {
+                font-size: 0.85rem;
+                padding: 10px;
+            }
+        }
+
+        /* Loading spinner */
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 12px 15px;
+            font-size: 0.9rem;
+            color: var(--secondary-color);
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 3px;
+        }
+
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: var(--secondary-color);
+            animation: typingAnimation 1.5s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typingAnimation {
+            0%, 100% { opacity: 0.3; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1.2); }
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Dark mode styles */
+        body.dark-mode {
+            background-color: #343541;
+            color: #fff;
+        }
+
+        body.dark-mode .main-content {
+            background-color: #343541;
+        }
+
+        body.dark-mode .chat-header,
+        body.dark-mode .chat-footer {
+            background-color: rgba(52, 53, 65, 0.8);
+            border-color: #444654;
+        }
+
+        body.dark-mode .chat-container {
+            background-color: #343541;
+            background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        }
+
+        body.dark-mode .message.user .content {
+            background-color: #444654;
+            color: #fff;
+        }
+
+        body.dark-mode .message.assistant .content {
+            background-color: #343541;
+            color: #fff;
+            border: 1px solid #444654;
+        }
+
+        body.dark-mode #input-container {
+            background-color: #444654;
+            border-color: #565869;
+        }
+
+        body.dark-mode #message-input {
+            color: #fff;
+        }
+
+        body.dark-mode .input-action-btn {
+            color: #a0a0a0;
+        }
+
+        body.dark-mode .welcome-title {
+            color: #fff;
+        }
+
+        body.dark-mode .welcome-subtitle {
+            color: #a0a0a0;
+        }
+
+        body.dark-mode .suggestion-item {
+            background-color: #444654;
+            border-color: #565869;
+            color: #fff;
+        }
+
+        body.dark-mode .suggestion-item:hover {
+            background-color: #565869;
+        }
+
+        body.dark-mode .model-selector {
+            background-color: #444654;
+            color: #a0a0a0;
+        }
+
+        body.dark-mode .header-button {
+            border-color: #565869;
+            color: #a0a0a0;
+        }
+
+        body.dark-mode .header-button:hover {
+            background-color: #444654;
+        }
+
+        body.dark-mode .content code {
+            background-color: #2d2d39;
+        }
+
+        body.dark-mode .content pre {
+            background-color: #2d2d39;
+        }
+
+        body.dark-mode .content blockquote {
+            background-color: #2d2d39;
+            border-left-color: #565869;
+            color: #a0a0a0;
+        }
+
+        .menu-toggle {
+            display: none;
+            background: transparent;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: inherit;
+        }
+
+        /* Transition for dark mode */
+        body, .main-content, .chat-header, .chat-footer, .chat-container, 
+        .message .content, #input-container, #message-input, 
+        .input-action-btn, .welcome-title, .welcome-subtitle, 
+        .suggestion-item, .model-selector, .header-button, 
+        .content code, .content pre, .content blockquote {
+            transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.2/marked.min.js"></script>
+</head>
+
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1><i class="fas fa-robot"></i> MCBot</h1>
+        </div>
+        
+        <div class="chat-list">
+            <div class="chat-list-header">Recent Chats</div>
+            <div class="chat-item active">
+                <i class="fas fa-comment"></i>
+                <span class="chat-title">Current Session</span>
+                <div class="chat-options">
+                    <i class="fas fa-ellipsis-v"></i>
+                </div>
+            </div>
+            <div class="chat-item">
+                <i class="fas fa-file-alt"></i>
+                <span class="chat-title">New Session</span>
+            </div>
+            <div class="chat-item">
+                <i class="fas fa-search"></i>
+                <span class="chat-title">Search Results</span>
+            </div>
+            
+            <div class="chat-list-header">Settings</div>
+            <div class="chat-item">
+                <i class="fas fa-cog"></i>
+                <span class="chat-title">Settings</span>
+            </div>
+            <div class="chat-item" id="toggle-theme">
+                <i class="fas fa-moon"></i>
+                <span class="chat-title">Dark Mode</span>
+            </div>
+        </div>
+        
+        <div class="sidebar-footer">
+            <button class="new-chat-btn">
+                <i class="fas fa-plus"></i>
+                <span>New Chat</span>
+            </button>
+        </div>
+        
+        <div class="user-profile">
+            <div class="user-avatar">U</div>
+            <div class="user-info">
+                <div class="user-name">User</div>
+                <div class="user-status">Free Tier</div>
+            </div>
+            <i class="fas fa-chevron-down"></i>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="chat-header">
+            <div class="chat-header-title">
+                <button class="menu-toggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <span>Current Session</span>
+                <div class="model-selector">
+                    <i class="fas fa-bolt"></i>
+                    <span>AI Assistant</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="header-button">
+                    <i class="fas fa-file-export"></i>
+                    <span>Export</span>
+                </button>
+                <button id="clear-button" class="header-button" onclick="clearHistory()">
+                    <i class="fas fa-trash"></i>
+                    <span>Clear</span>
+                </button>
+            </div>
+        </div>
+        
+        <div class="chat-container">
+            <div id="welcome-screen" class="welcome-container">
+                <h1 class="welcome-title">MCBot Chat Assistant</h1>
+                <p class="welcome-subtitle">How can I help you today?</p>
+                <div class="welcome-suggestions">
+                    <div class="suggestion-item" onclick="useSuggestion(this)">Tell me about federal rate decision</div>
+                    <div class="suggestion-item" onclick="useSuggestion(this)">How did the decision to maintain the rate come to a conclusion?</div>
+                </div>
+            </div>
+            <div id="messages"></div>
+        </div>
+        
+        <div class="chat-footer">
+            <div class="input-container-wrapper">
+                <div id="input-container">
+                    <textarea id="message-input" placeholder="Type Your Message..." rows="1" onkeydown="handleKeyDown(event)" oninput="this.style.height = ''; this.style.height = Math.min(this.scrollHeight, 150) + 'px'"></textarea>
+                    <div class="input-buttons">
+                        <button class="input-action-btn" title="Attach files">
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                        <button id="send-button" onclick="sendMessage()" title="Send message">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="input-footer">
+                    MCBot may produce inaccurate information about people, places, or facts.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // WebSocket connection
+        // const ws = new WebSocket('ws://localhost:8000/api/ws/chat');
+
+        // SSE
+        const eventSource = new EventSource('http://localhost:8000/api/chat/events');
+
+        // Initialize page state
+        let welcomeScreen = document.getElementById('welcome-screen');
+        let messagesContainer = document.getElementById('messages');
+        let messageInput = document.getElementById('message-input');
+        let sendButton = document.getElementById('send-button');
+        
+        // Basic functions
+        function handleKeyDown(event) {
+            if (event.key === 'Enter' && !event.shiftKey && !messageInput.disabled) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+        
+        function useSuggestion(element) {
+            messageInput.value = element.textContent;
+            messageInput.style.height = '';
+            messageInput.style.height = Math.min(messageInput.scrollHeight, 150) + 'px';
+            sendMessage();
+        }
+        
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            // Clear input and disable
+            messageInput.value = '';
+            messageInput.style.height = '';
+            disableInput();
+            
+            // Hide welcome screen
+            if (welcomeScreen.style.display !== 'none') {
+                welcomeScreen.style.display = 'none';
+            }
+            
+            // Display user message
+            // displayMessage(message, 'user');
+            
+            // Add typing indicator
+            addTypingIndicator();
+            
+            // Send to WebSocket
+            // ws.send(JSON.stringify({ content: message, source: 'user' }));
+
+            // To send a chat message (using fetch or any library):
+            fetch('http://localhost:8000/api/chat/message', {
+                method: 'POST',
+                headers: {
+                'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                content: message,
+                source: 'user'
+                }),
+            });
+        }
+        
+        function addTypingIndicator() {
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'typing-indicator';
+            typingDiv.innerHTML = `
+                <div class="label">
+                    <div class="label-avatar">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <span>Assistant is typing</span>
+                </div>
+                <div class="typing-dots">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            `;
+            messagesContainer.appendChild(typingDiv);
+            scrollToBottom();
+        }
+        
+        async function clearHistory() {
+            try {
+                const response = await fetch('http://localhost:8000/api/history/clear');
+                if (!response.ok) {
+                    throw new Error('Failed to clear history');
+                }
+                // Clear messages
+                messagesContainer.innerHTML = '';
+                // Show welcome screen
+                welcomeScreen.style.display = 'flex';
+                displayMessage("Chat history cleared.", 'system');
+            } catch (error) {
+                console.error('Error clearing history:', error);
+                displayMessage("Failed to clear history: " + error.message, 'error');
+            }
+        }
+        
+        function displayMessage(content, source) {
+            const messageElement = document.createElement('div');
+            messageElement.className = `message ${source}`;
+            
+            // Create label
+            const labelElement = document.createElement('div');
+            labelElement.className = 'label';
+            
+            let labelIcon = '';
+            let labelText = '';
+            
+            switch(source) {
+                case 'user':
+                    labelIcon = '<div class="label-avatar">U</div>';
+                    labelText = 'You';
+                    break;
+                case 'assistant':
+                    labelIcon = '<div class="label-avatar"><i class="fas fa-robot"></i></div>';
+                    labelText = 'Assistant';
+                    break;
+                case 'system':
+                    labelIcon = '<div class="label-avatar"><i class="fas fa-info-circle"></i></div>';
+                    labelText = 'System';
+                    break;
+                case 'error':
+                    labelIcon = '<div class="label-avatar"><i class="fas fa-exclamation-triangle"></i></div>';
+                    labelText = 'Error';
+                    break;
+                default:
+                    labelIcon = '<div class="label-avatar"><i class="fas fa-comment"></i></div>';
+                    labelText = source;
+            }
+            
+            labelElement.innerHTML = `${labelIcon}<span>${labelText}</span>`;
+            
+            // Create content
+            const contentElement = document.createElement('div');
+            contentElement.className = 'content';
+            
+            // Check if content is JSON
+            let isJson = false;
+            let jsonContent;
+            try {
+                if (typeof content === 'object' && content !== null) {
+                    jsonContent = content;
+                    isJson = true;
+                } else if (typeof content === 'string') {
+                    jsonContent = JSON.parse(content);
+                    isJson = true;
+                }
+            } catch (e) {
+                isJson = false;
+            }
+            
+            if (isJson) {
+                const jsonContainer = document.createElement('pre');
+                jsonContainer.className = 'json-content';
+                const formattedJson = JSON.stringify(jsonContent, null, 2);
+                jsonContainer.textContent = formattedJson;
+                contentElement.appendChild(jsonContainer);
+            } else {
+                contentElement.innerHTML = window.marked ? marked.parse(content) : content;
+            }
+            
+            // Create action buttons
+            let actionsDiv = null;
+            if (source === 'user' || source === 'assistant') {
+                actionsDiv = document.createElement('div');
+                actionsDiv.className = 'message-actions';
+                
+                if (source === 'user') {
+                    actionsDiv.innerHTML = `
+                        <button class="message-action-btn" onclick="editMessage(this)">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                    `;
+                } else if (source === 'assistant') {
+                    actionsDiv.innerHTML = `
+                        <button class="message-action-btn" onclick="copyMessage(this, '${content.replace(/'/g, "\\'")}')">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                        <button class="message-action-btn">
+                            <i class="fas fa-thumbs-up"></i>
+                        </button>
+                        <button class="message-action-btn">
+                            <i class="fas fa-thumbs-down"></i>
+                        </button>
+                    `;
+                }
+            }
+            
+            // Assemble message
+            messageElement.appendChild(labelElement);
+            messageElement.appendChild(contentElement);
+            if (actionsDiv) {
+                messageElement.appendChild(actionsDiv);
+            }
+            
+            // Add to container and scroll
+            messagesContainer.appendChild(messageElement);
+            scrollToBottom();
+        }
+        
+        function editMessage(button) {
+            const messageElement = button.closest('.message');
+            const contentElement = messageElement.querySelector('.content');
+            const messageText = contentElement.textContent.trim();
+            
+            // Set the text to input and focus
+            messageInput.value = messageText;
+            messageInput.focus();
+            messageInput.dispatchEvent(new Event('input'));
+        }
+        
+        function copyMessage(button, text) {
+            navigator.clipboard.writeText(text).then(() => {
+                // Show copied feedback
+                const originalHTML = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check"></i> Copied';
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                }, 2000);
+            });
+        }
+        
+        function disableInput() {
+            messageInput.disabled = true;
+            sendButton.disabled = true;
+            sendButton.innerHTML = '<span class="loading-spinner"></span>';
+        }
+        
+        function enableInput() {
+            messageInput.disabled = false;
+            sendButton.disabled = false;
+            sendButton.innerHTML = '<i class="fas fa-paper-plane"></i>';
+            messageInput.focus();
+        }
+        
+        function scrollToBottom() {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        // event handlers
+        eventSource.onmessage = function(event) {
+            const message = JSON.parse(event.data);
+            
+            // Remove typing indicator
+            const typingIndicator = document.querySelector('.typing-indicator');
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+            
+            // if (message.type === 'UserInputRequestedEvent') {
+            //     enableInput();
+            // }
+            // else if (message.type === 'ModelResponse') {
+            if (message.type === 'ModelResponse') {
+                // Create collapsible container
+                const collapsible = document.createElement('details');
+                const summary = document.createElement('summary');
+                
+                summary.textContent = message.source;
+                
+                // Create content container
+                const contentContainer = document.createElement('div');
+                contentContainer.className = 'content';
+                contentContainer.innerHTML = window.marked ? marked.parse(message.content) : message.content;
+                
+                // Add classes for styling
+                collapsible.classList.add('message');
+                collapsible.classList.add('system-message');
+                
+                // Assemble the elements
+                collapsible.appendChild(summary);
+                collapsible.appendChild(contentContainer);
+                
+                // Add to messages container
+                messagesContainer.appendChild(collapsible);
+                scrollToBottom();
+
+                enableInput();
+            }
+            else if (message.type === 'error') {
+                displayMessage(message.content, 'error');
+                enableInput();
+            }
+            else {
+                displayMessage(message.content, message.source);
+            }
+        };
+        
+        eventSource.onerror = function(error) {
+            displayMessage("SSE error occurred. Please refresh the page.", 'error');
+            enableInput();
+        };
+        
+        eventSource.onclose = function() {
+            displayMessage("Connection closed. Please refresh the page.", 'system');
+            disableInput();
+        };
+        
+        // Handle sidebar toggle
+        const menuToggle = document.querySelector('.menu-toggle');
+        const sidebar = document.querySelector('.sidebar');
+        
+        menuToggle.addEventListener('click', function() {
+            sidebar.classList.toggle('open');
+        });
+        
+        // Handle dark mode toggle
+        const toggleThemeButton = document.getElementById('toggle-theme');
+        toggleThemeButton.addEventListener('click', function() {
+            document.body.classList.toggle('dark-mode');
+            const icon = toggleThemeButton.querySelector('i');
+            if (document.body.classList.contains('dark-mode')) {
+                icon.className = 'fas fa-sun';
+            } else {
+                icon.className = 'fas fa-moon';
+            }
+        });
+        
+        // Handle chat menu items
+        const chatItems = document.querySelectorAll('.chat-item');
+        chatItems.forEach(item => {
+            item.addEventListener('click', function() {
+                // Skip if this is the theme toggle
+                if (this.id === 'toggle-theme') return;
+                
+                // Remove active class from all items
+                chatItems.forEach(i => {
+                    if (i.id !== 'toggle-theme') {
+                        i.classList.remove('active');
+                    }
+                });
+                
+                // Add active class to clicked item
+                this.classList.add('active');
+                
+                // Update header title
+                document.querySelector('.chat-header-title span').textContent = this.querySelector('.chat-title').textContent;
+                
+                // Close sidebar on mobile
+                if (window.innerWidth <= 768) {
+                    sidebar.classList.remove('open');
+                }
+            });
+        });
+        
+        // New chat button
+        document.querySelector('.new-chat-btn').addEventListener('click', function() {
+            clearHistory();
+            
+            // Set active class to the new session item
+            chatItems.forEach(i => {
+                if (i.id !== 'toggle-theme') {
+                    i.classList.remove('active');
+                }
+            });
+            
+            // Find New Session item and make it active
+            const newSessionItem = document.querySelector('.chat-item:nth-child(2)');
+            if (newSessionItem) {
+                newSessionItem.classList.add('active');
+                document.querySelector('.chat-header-title span').textContent = newSessionItem.querySelector('.chat-title').textContent;
+            }
+        });
+        
+        // Load chat history on page load
+        async function loadHistory() {
+            try {
+                const response = await fetch('http://localhost:8000/api/history');
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const history = await response.json();
+                
+                // If there's history, hide the welcome screen
+                if (history.length > 0) {
+                    welcomeScreen.style.display = 'none';
+                }
+                
+                history.forEach(message => {
+                    displayMessage(message.content, message.source);
+                });
+                
+                // If no history, make sure welcome screen is visible
+                if (history.length === 0) {
+                    welcomeScreen.style.display = 'flex';
+                }
+            } catch (error) {
+                console.error('Error loading history:', error);
+                displayMessage("Failed to load chat history. Starting a new session.", 'system');
+            }
+        }
+        
+        // Load history when the page is ready
+        loadHistory();
+    </script>
+
