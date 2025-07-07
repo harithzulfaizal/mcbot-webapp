@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils';
 import { Message as UIMessage } from '@/components/chat-box'; // Adjusted import
 import equal from 'fast-deep-equal';
 import MessageControls from './message-controls';
-import MessageReasoning from './message-reasoning';
 import { Skeleton } from './ui/skeleton';
 
 const BotTypingIndicator = () => (
@@ -22,7 +21,7 @@ function PureMessage({
   message: UIMessage;
   isStreaming: boolean;
 }) {
-  const isLoading = message.sender === 'bot' && !message.content && (!message.steps || message.steps.length === 0);
+  const isLoading = message.sender === 'bot' && !message.content;
 
   return (
     <div
@@ -42,11 +41,6 @@ function PureMessage({
             <BotTypingIndicator />
         ) : (
             <>
-                {/* Render "thinking" section if available */}
-                {message.sender === 'bot' && message.steps && message.steps.length > 0 && (
-                    <MessageReasoning steps={message.steps} id={message.id} />
-                )}
-
                 {/* Main message body */}
                 {message.content && (
                     <div

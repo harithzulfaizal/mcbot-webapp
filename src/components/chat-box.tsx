@@ -1,17 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { ChatInput } from "./chat-input";
-import Messages from "./Messages"; 
-
-export type MessageStep = {
-  type: string;
-  content: string;
-};
+import Messages from "./Messages";
+import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 
 export type Message = {
   id:string;
   sender: "user" | "bot";
   content: string;
-  steps?: MessageStep[];
   metadata?: Record<string, any>;
   type?: string;
   createdAt?: Date;
@@ -48,9 +43,9 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
     }
     return [];
   });
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const currentBotMessageId = useRef<string | null>(null);
+  const containerRef = useScrollToBottom(messages);
 
   const [userId, setUserId] = useState<string | null>(null);
   const [isBotTyping, setIsBotTyping] = useState(false);
@@ -83,7 +78,7 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
         try {
             const parsedData: AgentMessageOutput = JSON.parse(event.data);
 
-            if (parsedData.source === 'user') {
+            if (parsedData.source === 'user' || parsedData.type !== 'ModelResponse') {
                 return;
             }
 
@@ -96,22 +91,8 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
                 }
 
                 const currentMsg = { ...newMessages[msgIndex] };
-
-                if (parsedData.type === 'ModelResponse') {
-                    currentMsg.content = parsedData.content;
-                    newMessages[msgIndex] = currentMsg;
-                    stopStreaming();
-                } else {
-                    const steps = currentMsg.steps ? [...currentMsg.steps] : [];
-                    const lastStep = steps[steps.length - 1];
-                    if (lastStep && lastStep.type === parsedData.type) {
-                        lastStep.content += parsedData.content;
-                    } else {
-                        steps.push({ type: parsedData.type, content: parsedData.content });
-                    }
-                    currentMsg.steps = steps;
-                    newMessages[msgIndex] = currentMsg;
-                }
+                currentMsg.content = parsedData.content;
+                newMessages[msgIndex] = currentMsg;
                 
                 return newMessages;
             });
@@ -170,7 +151,6 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
         id: crypto.randomUUID(),
         sender: "bot",
         content: "",
-        steps: [],
         createdAt: new Date(),
     };
     
@@ -209,17 +189,11 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
     }
   };
 
-  useEffect(() => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
-    }, 0);
-  }, [messages, isBotTyping]);
-  
   return (
     <div className="relative w-full h-[calc(100vh-3.5rem)]">
         <main className="flex flex-col w-full max-w-4xl mx-auto h-full">
-            <div className="flex-1 overflow-y-auto hide-scrollbar pr-4 -mr-4 pl-4 -ml-4">
-                <Messages messages={messages} isBotTyping={isBotTyping} messagesEndRef={messagesEndRef} />
+            <div ref={containerRef} className="flex-1 overflow-y-auto hide-scrollbar pr-4 -mr-4 pl-4 -ml-4 pb-10">
+                <Messages messages={messages} isBotTyping={isBotTyping} />
             </div>
             {showPrompts && messages.filter(msg => msg.content !== "Connection to the chat service was lost or could not be established.").length === 0 && !isBotTyping && (
             <div className="flex justify-center py-4">

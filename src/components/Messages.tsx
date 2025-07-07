@@ -8,11 +8,9 @@ import { Skeleton } from './ui/skeleton';
 function PureMessages({
   messages,
   isBotTyping,
-  messagesEndRef,
 }: {
   messages: UIMessage[];
   isBotTyping: boolean;
-  messagesEndRef: React.RefObject<HTMLDivElement | null>;
 }) {
   return (
     <section className="flex flex-col pt-5 space-y-6">
@@ -23,7 +21,6 @@ function PureMessages({
           isStreaming={isBotTyping && index === messages.length - 1}
         />
       ))}
-      <div ref={messagesEndRef} />
     </section>
   );
 }
