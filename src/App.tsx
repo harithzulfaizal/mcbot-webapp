@@ -26,6 +26,37 @@ type User = {
   email: string;
 };
 
+// Define types for session data
+export type Message = {
+  id: string;
+  sender: "user" | "bot";
+  content: string;
+  metadata?: Record<string, any>;
+  type?: string;
+  createdAt?: Date;
+};
+
+export type Session = {
+  id: string;
+  name: string;
+  messages: Message[];
+};
+
+type ApiSession = {
+  session_id: string;
+  state: {
+    agent_states: {
+      [key: string]: {
+        message_thread: {
+          source: string;
+          content: any;
+          type: string;
+        }[];
+      };
+    };
+  };
+};
+
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -58,16 +89,90 @@ export default function App() {
   };
 
   // Chat session management
-  const [sessions, setSessions] = useState<{ id: string; name: string }[]>(() => [
-    { id: crypto.randomUUID(), name: "Chat 0" },
-  ]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionIndex, setCurrentSessionIndex] = useState(0);
 
+  useEffect(() => {
+    if (currentUser) {
+      const fetchSessions = async () => {
+        console.log("Fetching sessions for:", currentUser.email);
+        try {
+          const response = await fetch(`/api/sessions/${currentUser.email}`);
+          console.log("Fetch response:", response);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch sessions: ${response.statusText}`);
+          }
+          const data: ApiSession[] = await response.json();
+          console.log("Fetched session data:", data);
+
+          if (data.length > 0) {
+            const transformedSessions = data.map((session) => {
+              const agentStateKey = Object.keys(session.state.agent_states).find(k => k.startsWith("group_chat_manager"));
+              const messageThread = agentStateKey ? session.state.agent_states[agentStateKey].message_thread : [];
+
+              let lastMessageWasUser = false;
+              const processedMessages: Message[] = [];
+
+              messageThread.forEach((msg, index) => {
+                if (msg.source === 'user') {
+                  processedMessages.push({
+                    id: `${session.session_id}-${index}`,
+                    sender: "user",
+                    content: msg.content,
+                    type: msg.type,
+                  });
+                  lastMessageWasUser = true;
+                } else if (msg.source === 'SummarizerAgent' && lastMessageWasUser) {
+                  let content = "";
+                  try {
+                    const cleanedContent = msg.content.replace(/```json\n|```/g, '').trim();
+                    const parsedContent = JSON.parse(cleanedContent);
+                    content = parsedContent.answer;
+                  } catch (e) {
+                    console.error("Failed to parse bot message content:", e);
+                    content = "Error displaying message.";
+                  }
+                  processedMessages.push({
+                    id: `${session.session_id}-${index}`,
+                    sender: "bot",
+                    content: content,
+                    type: msg.type,
+                  });
+                  lastMessageWasUser = false; // Reset after processing the first agent message
+                }
+              });
+
+              const firstUserMessage = processedMessages.find(
+                (msg) => msg.sender === "user"
+              );
+              
+              const messages = processedMessages;
+
+              return {
+                id: session.session_id,
+                name: (firstUserMessage?.content as string) || "New Conversation",
+                messages,
+              };
+            });
+            console.log("Transformed sessions:", transformedSessions);
+            setSessions(transformedSessions);
+          } else {
+            console.log("No sessions found, creating a new one.");
+            setSessions([{ id: crypto.randomUUID(), name: "New Conversation", messages: [] }]);
+          }
+        } catch (error) {
+          console.error("Error fetching sessions:", error);
+          setSessions([{ id: crypto.randomUUID(), name: "New Conversation", messages: [] }]);
+        }
+      };
+      fetchSessions();
+    }
+  }, [currentUser]);
+
   const handleNewConversation = () => {
-    const newIndex = sessions.length;
-    const newSession = { id: crypto.randomUUID(), name: `Chat ${newIndex}` };
+    const newSession = { id: crypto.randomUUID(), name: "New Conversation", messages: [] };
     setSessions((prev) => [...prev, newSession]);
-    setCurrentSessionIndex(newIndex);
+    setCurrentSessionIndex(sessions.length);
   };
 
   const handleSelectSession = (index: number) => {
@@ -77,7 +182,7 @@ export default function App() {
   const handleDeleteSession = (index: number) => {
     const updated = sessions.filter((_, i) => i !== index);
     if (updated.length === 0) {
-      const defaultSession = { id: crypto.randomUUID(), name: "Chat 0" };
+      const defaultSession = { id: crypto.randomUUID(), name: "New Conversation", messages: [] };
       setSessions([defaultSession]);
       setCurrentSessionIndex(0);
     } else {
@@ -139,10 +244,10 @@ export default function App() {
           )}
         </header>
         {/* The ChatBox now controls its own width and can be placed directly */}
-        {location.pathname === "/" && (
+        {location.pathname === "/" && sessions.length > 0 && (
           <ChatBox
             key={sessions[currentSessionIndex].id}
-            sessionId={sessions[currentSessionIndex].id}
+            session={sessions[currentSessionIndex]}
             currentUser={currentUser}
           />
         )}

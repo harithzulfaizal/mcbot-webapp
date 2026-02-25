@@ -2,15 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChatInput } from "./chat-input";
 import Messages from "./Messages";
 import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
-
-export type Message = {
-  id:string;
-  sender: "user" | "bot";
-  content: string;
-  metadata?: Record<string, any>;
-  type?: string;
-  createdAt?: Date;
-};
+import { Session, Message } from "@/App";
 
 type User = {
   name: string;
@@ -19,7 +11,7 @@ type User = {
 
 interface ChatBoxProps {
   currentUser: User | null;
-  sessionId: string;
+  session: Session;
 }
 
 // Expected structure for data coming from SSE
@@ -33,16 +25,8 @@ type AgentMessageOutput = {
 
 import { PromptCards } from "./prompt-card";
 
-export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
-  const [messages, setMessages] = useState<Message[]>(() => {
-    const saved = localStorage.getItem(sessionId);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {}
-    }
-    return [];
-  });
+export function ChatBox({ currentUser, session }: ChatBoxProps) {
+  const [messages, setMessages] = useState<Message[]>(session.messages);
   const eventSourceRef = useRef<EventSource | null>(null);
   const currentBotMessageId = useRef<string | null>(null);
   const containerRef = useScrollToBottom(messages);
@@ -64,10 +48,10 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
   }
 
   useEffect(() => {
-    if (!userId || !sessionId) return;
+    if (!userId || !session.id) return;
 
-    console.log(`Setting up SSE for userId: ${userId}, sessionId: ${sessionId}`);
-    const newEventSource = new EventSource(`http://localhost:8000/api/chat/events/${userId}/${sessionId}`);
+    console.log(`Setting up SSE for userId: ${userId}, sessionId: ${session.id}`);
+    const newEventSource = new EventSource(`http://localhost:8000/api/chat/events/${userId}/${session.id}`);
     eventSourceRef.current = newEventSource;
 
     newEventSource.onopen = () => {
@@ -77,6 +61,11 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
     newEventSource.onmessage = (event) => {
         try {
             const parsedData: AgentMessageOutput = JSON.parse(event.data);
+
+            if (parsedData.type === 'ModelResponseEnd') {
+                handleStreamEnd();
+                return;
+            }
 
             if (parsedData.source === 'user' || parsedData.type !== 'ModelResponse') {
                 return;
@@ -114,6 +103,7 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
     const handleStreamEnd = () => {
         console.log("Stream ended (UI update).");
         setIsBotTyping(false);
+        currentBotMessageId.current = null;
     };
 
     newEventSource.onerror = (error) => {
@@ -129,16 +119,10 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
       }
       handleStreamEnd();
     };
-  }, [userId, sessionId]);
-
- useEffect(() => {
-   if (messages.length > 0) {
-     localStorage.setItem(sessionId, JSON.stringify(messages));
-   }
- }, [messages, sessionId]);
+  }, [userId, session.id]);
 
   const sendMessage = async (input: string) => {
-    if (!input.trim() || !userId || !sessionId) return;
+    if (!input.trim() || !userId || !session.id) return;
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -167,7 +151,7 @@ export function ChatBox({ currentUser, sessionId }: ChatBoxProps) {
           type: "TextMessage",
           source: "user",
           user_id: userId,
-          session_id: sessionId,
+          session_id: session.id,
         }),
       });
 

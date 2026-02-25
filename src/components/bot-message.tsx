@@ -45,8 +45,13 @@ export function BotMessage({ content, thinking }: BotMessageProps) {
 
       <div className="flex items-start gap-2 mt-2">
         <div className="prose prose-sm dark:prose-invert max-w-none">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {content}
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              p: ({ node, ...props }) => <p {...props} className="mb-2 last:mb-0" />,
+            }}
+          >
+            {content}
           </ReactMarkdown>
         </div>
       </div>
