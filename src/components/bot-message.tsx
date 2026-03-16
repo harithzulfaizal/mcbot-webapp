@@ -48,7 +48,7 @@ export function BotMessage({ content, thinking }: BotMessageProps) {
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              p: ({ node, ...props }) => <p {...props} className="mb-2 last:mb-0" />,
+              p: ({ ...props }) => <p {...props} className="mb-2 last:mb-0" />,
             }}
           >
             {content}

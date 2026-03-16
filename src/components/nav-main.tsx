@@ -15,6 +15,7 @@ export function NavMain({
     url: string;
     icon: LucideIcon;
     isActive?: boolean;
+    onClick?: () => void;
   }[];
 }) {
   return (
@@ -22,7 +23,7 @@ export function NavMain({
       {items.map((item) => (
         <SidebarMenuItem key={item.title}>
           <SidebarMenuButton asChild isActive={item.isActive}>
-            <Link to={item.url}>
+            <Link to={item.url} onClick={item.onClick}>
               <item.icon />
               <span>{item.title}</span>
             </Link>

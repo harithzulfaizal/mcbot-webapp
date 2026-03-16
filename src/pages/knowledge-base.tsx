@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +30,16 @@ type Document = {
   uploaded_at: string;
 };
 
+type ApiDocument = {
+  doc_id: string | number;
+  source: string;
+  date: string | number;
+};
+
+type DocumentsResponse = {
+  documents?: ApiDocument[];
+};
+
 interface KnowledgeBasePageProps {
   currentUser: AuthUser | null;
 }
@@ -50,11 +60,7 @@ export default function KnowledgeBasePage({ currentUser }: KnowledgeBasePageProp
   const canManageKnowledgeBase = Boolean(currentUser?.canManageKb);
 
   // Fetch documents when component mounts
-  useEffect(() => {
-    fetchDocuments();
-  }, [currentUser?.token]);
-
-  const fetchDocuments = async () => {
+  const fetchDocuments = useCallback(async () => {
     if (!currentUser?.token) {
       setDocuments([]);
       return;
@@ -69,15 +75,15 @@ export default function KnowledgeBasePage({ currentUser }: KnowledgeBasePageProp
       if (!response.ok) {
         throw new Error('Failed to fetch documents');
       }
-      const data = await response.json();
+      const data: DocumentsResponse = await response.json();
       
       if (data && Array.isArray(data.documents)) {
-        const transformedDocuments = data.documents.map((doc: any) => {
+        const transformedDocuments = data.documents.map((doc) => {
           const dateStr = String(doc.date);
           const isoDate = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
           
           return {
-            id: doc.doc_id,
+            id: String(doc.doc_id),
             name: doc.source,
             type: doc.source.split('.').pop()?.toLowerCase() || '',
             size: 0, // Size is not provided by the backend
@@ -92,7 +98,11 @@ export default function KnowledgeBasePage({ currentUser }: KnowledgeBasePageProp
       console.error('Error fetching documents:', error);
       setDocuments([]); // Ensure documents is an array on error
     }
-  };
+  }, [currentUser?.token]);
+
+  useEffect(() => {
+    fetchDocuments();
+  }, [fetchDocuments]);
 
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -245,7 +255,7 @@ export default function KnowledgeBasePage({ currentUser }: KnowledgeBasePageProp
   };
 
   const sortedDocuments = React.useMemo(() => {
-    let sortableItems = [...documents];
+    const sortableItems = [...documents];
     if (sortConfig !== null) {
       sortableItems.sort((a, b) => {
         if (a[sortConfig.key] < b[sortConfig.key]) {

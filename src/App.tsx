@@ -22,20 +22,23 @@ import SetupPasswordPage from "./pages/setup-password-page";
 import AdminPage from "./pages/admin-page";
 import { AuthUser, profileToAuthUser, UserProfile } from "./lib/auth";
 import { apiUrl } from "./lib/api";
+import { filterInlineCitations } from "./lib/citations";
 
 export type Citation = {
   index: number;
   source: string;
 };
 
+type MessageMetadata = {
+  citations?: Citation[];
+  [key: string]: unknown;
+};
+
 export type Message = {
   id: string;
   sender: "user" | "bot";
   content: string;
-  metadata?: {
-    citations?: Citation[];
-    [key: string]: any;
-  };
+  metadata?: MessageMetadata;
   type?: string;
   createdAt?: Date;
 };
@@ -53,12 +56,17 @@ type ApiSession = {
       [key: string]: {
         message_thread: {
           source: string;
-          content: any;
+          content: unknown;
           type: string;
         }[];
       };
     };
   };
+};
+
+type AssistantPayload = {
+  answer?: unknown;
+  citations?: unknown;
 };
 
 const DEFAULT_SESSION_NAME = "New Conversation";
@@ -84,18 +92,22 @@ const parseAssistantPayload = (rawContent: unknown): {
   const normalizedContent = fencedMatch ? fencedMatch[1] : rawContent;
 
   try {
-    const parsedContent = JSON.parse(normalizedContent);
+    const parsedContent = JSON.parse(normalizedContent) as AssistantPayload;
     const citations = Array.isArray(parsedContent.citations)
       ? parsedContent.citations.filter(
-          (citation: any): citation is Citation =>
-            typeof citation?.index === "number" &&
-            typeof citation?.source === "string"
+          (citation): citation is Citation =>
+            typeof citation === "object" &&
+            citation !== null &&
+            typeof (citation as Citation).index === "number" &&
+            typeof (citation as Citation).source === "string"
         )
       : [];
+    const content =
+      typeof parsedContent.answer === "string" ? parsedContent.answer : "";
 
     return {
-      content: typeof parsedContent.answer === "string" ? parsedContent.answer : "",
-      citations,
+      content,
+      citations: filterInlineCitations(content, citations),
     };
   } catch (error) {
     console.error("Failed to parse bot message content:", error);
@@ -232,7 +244,7 @@ export default function App() {
                 processedMessages.push({
                   id: `${session.session_id}-${index}`,
                   sender: "user",
-                  content: msg.content,
+                  content: typeof msg.content === "string" ? msg.content : "",
                   type: msg.type,
                 });
                 lastMessageWasUser = true;
@@ -285,6 +297,17 @@ export default function App() {
 
   const handleSelectSession = (index: number) => {
     setCurrentSessionIndex(index);
+  };
+
+  const handleOpenLatestSession = () => {
+    if (!currentUser?.canAccessChat) {
+      return;
+    }
+
+    setCurrentSessionIndex(0);
+    if (location.pathname !== "/") {
+      navigate("/");
+    }
   };
 
   const updateSessionMessages = (sessionId: string, messages: Message[]) => {
@@ -380,6 +403,7 @@ export default function App() {
         sessions={sessions}
         currentSessionIndex={currentSessionIndex}
         onSelectSession={handleSelectSession}
+        onOpenLatestSession={handleOpenLatestSession}
         onNewConversation={handleNewConversation}
         onDeleteSession={handleDeleteSession}
       />

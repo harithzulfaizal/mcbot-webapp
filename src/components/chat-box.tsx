@@ -5,6 +5,7 @@ import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 import { Session, Message as AppMessage, Citation } from "@/App";
 import { AuthUser } from "@/lib/auth";
 import { API_BASE_URL, apiUrl } from "@/lib/api";
+import { filterInlineCitations } from "@/lib/citations";
 
 export type Message = AppMessage;
 export type MessageStep = {
@@ -21,8 +22,8 @@ interface ChatBoxProps {
 // Expected structure for data coming from SSE
 type AgentMessageOutput = {
   source: string;
-  models_usage: Record<string, any> | null;
-  metadata: Record<string, any>;
+  models_usage: Record<string, unknown> | null;
+  metadata: Record<string, unknown>;
   content: string;
   type: string;
 };
@@ -43,10 +44,11 @@ export function ChatBox({ currentUser, session, onSessionMessagesChange }: ChatB
       return [];
     }
 
-    return rawCitations.filter(
+    const citations = rawCitations.filter(
       (citation): citation is Citation =>
         typeof citation?.index === "number" && typeof citation?.source === "string"
     );
+    return filterInlineCitations(payload.content, citations);
   };
 
   useEffect(() => {
@@ -67,7 +69,7 @@ export function ChatBox({ currentUser, session, onSessionMessagesChange }: ChatB
     setMessages(session.messages);
     currentBotMessageId.current = null;
     setIsBotTyping(false);
-  }, [session.id]);
+  }, [session.id, session.messages]);
 
   const updateMessages = (
     updater: Message[] | ((currentMessages: Message[]) => Message[])
@@ -112,47 +114,53 @@ export function ChatBox({ currentUser, session, onSessionMessagesChange }: ChatB
     newEventSource.onopen = () => {
       console.log(`SSE connection established to ${API_BASE_URL}.`);
     };
+
+    const applyAssistantPayload = (payload: AgentMessageOutput) => {
+      setMessages((currentMessages) => {
+        const newMessages = [...currentMessages];
+        const msgIndex = newMessages.findIndex((m) => m.id === currentBotMessageId.current);
+
+        if (msgIndex === -1) {
+          return currentMessages;
+        }
+
+        const currentMsg = { ...newMessages[msgIndex] };
+        currentMsg.content = payload.content;
+        currentMsg.metadata = {
+          ...currentMsg.metadata,
+          citations: getCitations(payload),
+        };
+        newMessages[msgIndex] = currentMsg;
+        onSessionMessagesChange(session.id, newMessages);
+        return newMessages;
+      });
+    };
     
     newEventSource.onmessage = (event) => {
         try {
             const parsedData: AgentMessageOutput = JSON.parse(event.data);
 
-            if (parsedData.type === 'ModelResponseEnd') {
-                handleStreamEnd();
+            if (parsedData.source === 'user') {
                 return;
             }
 
-            if (parsedData.source === 'user' || parsedData.type !== 'ModelResponse') {
-                return;
-            }
-
-            updateMessages(prevMessages => {
-                const newMessages = [...prevMessages];
-                const msgIndex = newMessages.findIndex(m => m.id === currentBotMessageId.current);
-
-                if (msgIndex === -1) {
-                    return prevMessages;
+            if (parsedData.type === 'ModelResponse' || parsedData.type === 'ModelResponseEnd') {
+                applyAssistantPayload(parsedData);
+                if (parsedData.type === 'ModelResponseEnd') {
+                    handleStreamEnd();
                 }
-
-                const currentMsg = { ...newMessages[msgIndex] };
-                currentMsg.content = parsedData.content;
-                currentMsg.metadata = {
-                  ...currentMsg.metadata,
-                  citations: getCitations(parsedData),
-                };
-                newMessages[msgIndex] = currentMsg;
-                
-                return newMessages;
-            });
+                return;
+            }
 
         } catch (error) {
             console.error("Failed to parse SSE message data:", error);
-            updateMessages(prev => {
-                const newMessages = [...prev];
+            setMessages((currentMessages) => {
+                const newMessages = [...currentMessages];
                 const msgIndex = newMessages.findIndex(m => m.id === currentBotMessageId.current);
                 if (msgIndex !== -1) {
                     newMessages[msgIndex].content = `An error occurred while processing the response.`;
                 }
+                onSessionMessagesChange(session.id, newMessages);
                 return newMessages;
             });
             stopStreaming();
@@ -178,7 +186,7 @@ export function ChatBox({ currentUser, session, onSessionMessagesChange }: ChatB
       }
       handleStreamEnd();
     };
-  }, [userId, session.id, currentUser?.token]);
+  }, [currentUser?.token, onSessionMessagesChange, session.id, userId]);
 
   const sendMessage = async (input: string) => {
     if (!input.trim() || !userId || !session.id || !currentUser?.token) return;

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,7 @@ export default function AdminPage({ currentUser }: AdminPageProps) {
   const [generatedLink, setGeneratedLink] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setIsLoading(true);
     setError("");
     try {
@@ -47,11 +47,11 @@ export default function AdminPage({ currentUser }: AdminPageProps) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentUser.token]);
 
   useEffect(() => {
     fetchUsers();
-  }, [currentUser.token]);
+  }, [fetchUsers]);
 
   const handleCreateUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-export function useScrollToBottom(dep: any) {
+export function useScrollToBottom<T>(dep: T) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
