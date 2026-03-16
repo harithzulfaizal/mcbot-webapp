@@ -2,6 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Upload,
   Trash2,
   FileText,
@@ -9,6 +17,8 @@ import {
   XCircle,
   ArrowUpDown,
 } from "lucide-react";
+import { AuthUser } from "@/lib/auth";
+import { apiUrl } from "@/lib/api";
 
 type SortKey = 'name' | 'uploaded_at';
 
@@ -20,13 +30,8 @@ type Document = {
   uploaded_at: string;
 };
 
-type User = {
-  name: string;
-  email: string;
-};
-
 interface KnowledgeBasePageProps {
-  currentUser: User | null;
+  currentUser: AuthUser | null;
 }
 
 export default function KnowledgeBasePage({ currentUser }: KnowledgeBasePageProps) {
@@ -40,15 +45,27 @@ export default function KnowledgeBasePage({ currentUser }: KnowledgeBasePageProp
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'ascending' | 'descending' } | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [documentPendingDelete, setDocumentPendingDelete] = useState<Document | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const canManageKnowledgeBase = Boolean(currentUser?.canManageKb);
 
   // Fetch documents when component mounts
   useEffect(() => {
     fetchDocuments();
-  }, []);
+  }, [currentUser?.token]);
 
   const fetchDocuments = async () => {
+    if (!currentUser?.token) {
+      setDocuments([]);
+      return;
+    }
+
     try {
-      const response = await fetch('http://localhost:8000/api/kb/documents');
+      const response = await fetch(apiUrl('/api/kb/documents'), {
+        headers: {
+          Authorization: `Bearer ${currentUser.token}`,
+        },
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch documents');
       }
@@ -145,7 +162,7 @@ export default function KnowledgeBasePage({ currentUser }: KnowledgeBasePageProp
   };
 
   const handleUploadClick = async () => {
-    if (selectedFiles.length === 0) return;
+    if (selectedFiles.length === 0 || !currentUser?.token) return;
 
     setIsUploading(true);
     setUploadError('');
@@ -155,13 +172,12 @@ export default function KnowledgeBasePage({ currentUser }: KnowledgeBasePageProp
       formData.append('files', file);
     });
 
-    if (currentUser?.email) {
-      formData.append('user_id', currentUser.email);
-    }
-
     try {
-      const response = await fetch('http://localhost:8000/api/kb/upload_documents', {
+      const response = await fetch(apiUrl('/api/kb/upload_documents'), {
         method: 'POST',
+        headers: {
+          Authorization: `Bearer ${currentUser.token}`,
+        },
         body: formData,
       });
 
@@ -181,21 +197,28 @@ export default function KnowledgeBasePage({ currentUser }: KnowledgeBasePageProp
   };
 
   const handleDelete = async (documentId: string) => {
-    if (!window.confirm('Are you sure you want to delete this document?')) {
+    if (!currentUser?.token) {
       return;
     }
+    setIsDeleting(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/kb/documents/${documentId}`, {
+      const response = await fetch(apiUrl(`/api/kb/documents/${documentId}`), {
         method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${currentUser.token}`,
+        },
       });
 
       if (!response.ok) {
         throw new Error('Failed to delete document');
       }
 
+      setDocumentPendingDelete(null);
       fetchDocuments(); // Refresh the document list
     } catch (error) {
       console.error('Error deleting document:', error);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -273,8 +296,10 @@ export default function KnowledgeBasePage({ currentUser }: KnowledgeBasePageProp
         <div className="mx-auto w-full max-w-4xl"> {/* Slightly increased max-width for better table layout */}
           <h1 className="text-xl font-semibold mb-4">Knowledge Base Management</h1> {/* font-bold to font-semibold, reduced mb */}
           <p className="text-sm text-muted-foreground mb-6"> {/* Changed from text-l to text-sm */}
-            Upload and manage documents for the chatbot's knowledge base.
-            Supported file types: TXT, PDF, CSV. Maximum file size: 10MB.
+            Browse the shared document library for the chatbot&apos;s knowledge base.
+            {canManageKnowledgeBase
+              ? " You can upload and delete documents as a maintainer/admin. Supported file types: TXT, PDF, CSV. Maximum file size: 10MB."
+              : " This page is read-only for your role."}
           </p>
 
           {uploadError && (
@@ -307,29 +332,31 @@ export default function KnowledgeBasePage({ currentUser }: KnowledgeBasePageProp
             </div>
           </div>
 
-          <div
-            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer mb-6 ${isDragging ? 'border-primary bg-primary/10' : 'border-muted-foreground/50'}`}
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept=".txt,.pdf,.csv"
-              className="hidden"
-              onChange={handleFileSelect}
-            />
-            <Upload className="mx-auto h-12 w-12 text-muted-foreground" />
-            <p className="mt-2 text-sm text-muted-foreground">
-              Drag & drop files here, or click to select files.
-            </p>
-          </div>
+          {canManageKnowledgeBase ? (
+            <div
+              className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer mb-6 ${isDragging ? 'border-primary bg-primary/10' : 'border-muted-foreground/50'}`}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".txt,.pdf,.csv"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+              <Upload className="mx-auto h-12 w-12 text-muted-foreground" />
+              <p className="mt-2 text-sm text-muted-foreground">
+                Drag & drop files here, or click to select files.
+              </p>
+            </div>
+          ) : null}
 
-          {selectedFiles.length > 0 && (
+          {canManageKnowledgeBase && selectedFiles.length > 0 && (
             <div className="mb-6">
               <h2 className="text-lg font-semibold mb-2">Selected Files:</h2>
               <ul className="space-y-2">
@@ -371,7 +398,9 @@ export default function KnowledgeBasePage({ currentUser }: KnowledgeBasePageProp
                       <ArrowUpDown className="ml-2 h-4 w-4" />
                     </Button>
                   </th>
-                  <th className="text-sm text-left px-3 py-3 font-medium text-muted-foreground">Actions</th>
+                  {canManageKnowledgeBase ? (
+                    <th className="text-sm text-left px-3 py-3 font-medium text-muted-foreground">Actions</th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
@@ -385,25 +414,29 @@ export default function KnowledgeBasePage({ currentUser }: KnowledgeBasePageProp
                       {/* <td className="px-3 py-3 text-sm document-type align-middle">{doc.type.toUpperCase()}</td> */}
                       {/* <td className="px-3 py-3 text-sm document-size align-middle">{formatFileSize(doc.size)}</td> */}
                       <td className="px-3 py-3 text-sm document-date align-middle">{formatDate(doc.uploaded_at)}</td>
-                      <td className="px-3 py-3 text-sm document-actions align-middle text-right sm:text-left"> {/* Adjusted text alignment for actions */}
-                        <Button
-                          variant="destructive"
-                          size="sm" // sm size for buttons is common and good
-                          onClick={() => handleDelete(doc.id)}
-                          title="Delete document"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </td>
+                      {canManageKnowledgeBase ? (
+                        <td className="px-3 py-3 text-sm document-actions align-middle text-right sm:text-left"> {/* Adjusted text alignment for actions */}
+                          <Button
+                            variant="destructive"
+                            size="sm" // sm size for buttons is common and good
+                            onClick={() => setDocumentPendingDelete(doc)}
+                            title="Delete document"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </td>
+                      ) : null}
                     </tr>
                   ))
                 ) : (
                   <tr>
                     {/* Added text-sm */}
-                    <td colSpan={3} className="px-3 py-10 text-sm text-muted-foreground text-center">
+                    <td colSpan={canManageKnowledgeBase ? 3 : 2} className="px-3 py-10 text-sm text-muted-foreground text-center">
                       {searchTerm
                         ? 'No documents matching your search.' // Added a period
-                        : 'No documents in the knowledge base. Upload some to get started!'} {/* More engaging empty state */}
+                        : canManageKnowledgeBase
+                          ? 'No documents in the knowledge base. Upload some to get started!'
+                          : 'No documents are currently available in the shared knowledge base.'} {/* More engaging empty state */}
                     </td>
                   </tr>
                 )}
@@ -425,6 +458,45 @@ export default function KnowledgeBasePage({ currentUser }: KnowledgeBasePageProp
           )}
         </div>
       </div>
+      <Dialog
+        open={canManageKnowledgeBase && documentPendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) {
+            setDocumentPendingDelete(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete document?</DialogTitle>
+            <DialogDescription>
+              {documentPendingDelete
+                ? `This will permanently remove "${documentPendingDelete.name}" from the knowledge base.`
+                : "This will permanently remove the selected document from the knowledge base."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDocumentPendingDelete(null)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (documentPendingDelete) {
+                  handleDelete(documentPendingDelete.id);
+                }
+              }}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

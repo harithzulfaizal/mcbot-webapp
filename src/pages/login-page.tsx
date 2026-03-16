@@ -1,36 +1,63 @@
-// src/pages/LoginPage.tsx
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input'; // Assuming this is your custom auto-resizing textarea, but we'll use it as a standard input for login
-import { Label } from '@/components/ui/label'; // You might need to create this or use a simple <label>
-import { Command } from 'lucide-react'; // Or any other icon you prefer
-
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Command } from 'lucide-react';
+import { AuthUser, profileToAuthUser, UserProfile } from '@/lib/auth';
+import { apiUrl } from '@/lib/api';
 
 interface LoginPageProps {
-  onLoginSuccess: (user: { name: string; email: string }) => void;
+  onLoginSuccess: (user: AuthUser) => void;
 }
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const fetchToken = async (
+    inputUsername: string,
+    inputPassword: string
+  ): Promise<{ access_token: string; user: UserProfile }> => {
+    const tokenResp = await fetch(apiUrl('/auth/token'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: inputUsername, password: inputPassword }),
+    });
+
+    const tokenData = await tokenResp.json().catch(() => ({}));
+    if (!tokenResp.ok) {
+      throw new Error(tokenData.detail || 'Failed to sign in.');
+    }
+
+    if (!tokenData.access_token) {
+      throw new Error('Token response missing access_token.');
+    }
+    if (!tokenData.user) {
+      throw new Error('Token response missing user profile.');
+    }
+
+    return tokenData as { access_token: string; user: UserProfile };
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
 
-    // Basic validation
-    if (!email || !password) {
-      setError('Please enter both email and password.');
+    if (!username || !password) {
+      setError('Please enter both username and password.');
       return;
     }
 
-    // Dummy authentication
-    if (email === 'user@example.com' && password === 'password') {
-      // Simulate successful login
-      onLoginSuccess({ name: 'Kijang User', email: email });
-    } else {
-      setError('Invalid email or password.');
+    setIsSubmitting(true);
+    try {
+      const tokenData = await fetchToken(username, password);
+      onLoginSuccess(profileToAuthUser(tokenData.user, tokenData.access_token));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Authentication failed.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -38,7 +65,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-4">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
-          <Command className="mx-auto h-12 w-12 text-primary" /> {/* Using Command as a placeholder logo */}
+          <Command className="mx-auto h-12 w-12 text-primary" />
           <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-white">
             Sign in to MC Bot
           </h2>
@@ -54,17 +81,17 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           )}
           <div className="space-y-4">
             <div>
-              <Label htmlFor="email" className="text-slate-300">Email address</Label>
+              <Label htmlFor="username" className="text-slate-300">Username</Label>
               <Input
-                id="email"
-                name="email"
-                type="email" // Changed from textarea to standard input behavior
-                autoComplete="email"
+                id="username"
+                name="username"
+                type="text"
+                autoComplete="username"
                 required
                 className="mt-1 block w-full appearance-none rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-white placeholder-slate-500 shadow-sm focus:border-primary focus:outline-none focus:ring-primary sm:text-sm"
-                placeholder="user@example.com"
-                value={email}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
+                placeholder="your-username"
+                value={username}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUsername(e.target.value)}
               />
             </div>
             <div>
@@ -72,29 +99,27 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
               <Input
                 id="password"
                 name="password"
-                type="password" // Changed from textarea to standard input behavior
+                type="password"
                 autoComplete="current-password"
                 required
                 className="mt-1 block w-full appearance-none rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-white placeholder-slate-500 shadow-sm focus:border-primary focus:outline-none focus:ring-primary sm:text-sm"
-                placeholder="password"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
               />
             </div>
           </div>
 
-          <div>
+          <div className="space-y-2">
             <Button
               type="submit"
+              disabled={isSubmitting}
               className="flex w-full justify-center rounded-md border border-transparent bg-primary py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-slate-900"
             >
-              Sign in
+              {isSubmitting ? 'Please wait...' : 'Sign in'}
             </Button>
           </div>
         </form>
-        <p className="mt-6 text-center text-sm text-slate-400">
-          Use <code className="rounded bg-slate-700 px-1 py-0.5 font-mono text-xs text-slate-300">user@example.com</code> and <code className="rounded bg-slate-700 px-1 py-0.5 font-mono text-xs text-slate-300">password</code> to login.
-        </p>
       </div>
     </div>
   );

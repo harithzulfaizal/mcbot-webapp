@@ -1,36 +1,27 @@
-// src/components/MessageControls.tsx
-import { useState } from 'react';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
-import { Check, Copy } from 'lucide-react';
+import { Copy } from 'lucide-react';
 import { Message } from '@/components/chat-box'; // Adjusted import path
+import { copyTextToClipboard } from '@/lib/clipboard';
 
 interface MessageControlsProps {
   message: Message;
   content: string;
+  onCopy: (message: string) => void;
 }
 
 export default function MessageControls({
   message,
   content,
+  onCopy,
 }: MessageControlsProps) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    // Using the recommended clipboard command for iframe compatibility
-    const textArea = document.createElement("textarea");
-    textArea.value = content;
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
+  const handleCopy = async () => {
     try {
-      document.execCommand('copy');
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      await copyTextToClipboard(content);
+      onCopy("Copied to clipboard");
     } catch (err) {
       console.error('Failed to copy: ', err);
     }
-    document.body.removeChild(textArea);
   };
 
   return (
@@ -44,7 +35,7 @@ export default function MessageControls({
       )}
     >
       <Button variant="ghost" size="icon" onClick={handleCopy} className="h-7 w-7">
-        {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+        <Copy className="w-4 h-4" />
         <span className="sr-only">Copy message</span>
       </Button>
     </div>

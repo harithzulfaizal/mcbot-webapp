@@ -14,12 +14,35 @@ const BotTypingIndicator = () => (
     </div>
 );
 
+const MessageCitations = ({ message }: { message: UIMessage }) => {
+  const citations = message.metadata?.citations;
+
+  if (message.sender !== 'bot' || !citations || citations.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+      {citations.map((citation) => (
+        <span
+          key={`${message.id}-${citation.index}-${citation.source}`}
+          className="rounded-full border border-border/60 bg-secondary/40 px-2 py-1"
+        >
+          [{citation.index}] {citation.source}
+        </span>
+      ))}
+    </div>
+  );
+};
+
 function PureMessage({
   message,
   isStreaming,
+  onCopy,
 }: {
   message: UIMessage;
   isStreaming: boolean;
+  onCopy: (message: string) => void;
 }) {
   const isLoading = message.sender === 'bot' && !message.content;
 
@@ -33,7 +56,7 @@ function PureMessage({
     >
       <div
          className={cn(
-            'flex flex-col max-w-[100%]',
+            'flex w-full flex-col',
             message.sender === 'user' ? 'items-end' : 'items-start'
         )}
       >
@@ -45,13 +68,19 @@ function PureMessage({
                 {message.content && (
                     <div
                         className={cn(
-                            'px-4 py-3 rounded-xl',
+                            'w-fit max-w-full rounded-2xl px-3.5 py-2.5 sm:max-w-[92%] lg:max-w-[85%]',
                             message.sender === 'user'
-                            ? 'bg-secondary border border-secondary-foreground/2'
-                            : 'bg-transparent' // Bot messages have transparent background to let markdown styles show
+                            ? 'border border-secondary-foreground/5 bg-secondary'
+                            : 'bg-transparent'
                         )}
                     >
-                        <MemoizedMarkdown content={message.content} id={message.id} />
+                        <MemoizedMarkdown
+                          content={message.content}
+                          id={message.id}
+                          size="small"
+                          onCopy={onCopy}
+                        />
+                        <MessageCitations message={message} />
                     </div>
                 )}
 
@@ -60,6 +89,7 @@ function PureMessage({
                      <MessageControls
                         message={message}
                         content={message.content}
+                        onCopy={onCopy}
                     />
                 )}
             </>

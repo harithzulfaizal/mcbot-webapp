@@ -2,16 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import { ChatInput } from "./chat-input";
 import Messages from "./Messages";
 import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
-import { Session, Message } from "@/App";
+import { Session, Message as AppMessage, Citation } from "@/App";
+import { AuthUser } from "@/lib/auth";
+import { API_BASE_URL, apiUrl } from "@/lib/api";
 
-type User = {
-  name: string;
-  email: string;
+export type Message = AppMessage;
+export type MessageStep = {
+  type: string;
+  content: string;
 };
 
 interface ChatBoxProps {
-  currentUser: User | null;
+  currentUser: AuthUser | null;
   session: Session;
+  onSessionMessagesChange: (sessionId: string, messages: Message[]) => void;
 }
 
 // Expected structure for data coming from SSE
@@ -22,24 +26,70 @@ type AgentMessageOutput = {
   content: string;
   type: string;
 };
-
-import { PromptCards } from "./prompt-card";
-
-export function ChatBox({ currentUser, session }: ChatBoxProps) {
+export function ChatBox({ currentUser, session, onSessionMessagesChange }: ChatBoxProps) {
   const [messages, setMessages] = useState<Message[]>(session.messages);
   const eventSourceRef = useRef<EventSource | null>(null);
   const currentBotMessageId = useRef<string | null>(null);
+  const copyFeedbackTimerRef = useRef<number | null>(null);
   const containerRef = useScrollToBottom(messages);
 
   const [userId, setUserId] = useState<string | null>(null);
   const [isBotTyping, setIsBotTyping] = useState(false);
-  const [showPrompts] = useState(true);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+
+  const getCitations = (payload: AgentMessageOutput): Citation[] => {
+    const rawCitations = payload.metadata?.citations;
+    if (!Array.isArray(rawCitations)) {
+      return [];
+    }
+
+    return rawCitations.filter(
+      (citation): citation is Citation =>
+        typeof citation?.index === "number" && typeof citation?.source === "string"
+    );
+  };
 
   useEffect(() => {
-    if (currentUser && currentUser.email) {
-      setUserId(currentUser.email);
+    if (currentUser && currentUser.username) {
+      setUserId(currentUser.username);
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    return () => {
+      if (copyFeedbackTimerRef.current) {
+        window.clearTimeout(copyFeedbackTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    setMessages(session.messages);
+    currentBotMessageId.current = null;
+    setIsBotTyping(false);
+  }, [session.id]);
+
+  const updateMessages = (
+    updater: Message[] | ((currentMessages: Message[]) => Message[])
+  ) => {
+    setMessages((currentMessages) => {
+      const nextMessages =
+        typeof updater === "function" ? updater(currentMessages) : updater;
+      onSessionMessagesChange(session.id, nextMessages);
+      return nextMessages;
+    });
+  };
+
+  const handleCopyFeedback = (message: string) => {
+    setCopyFeedback(message);
+    if (copyFeedbackTimerRef.current) {
+      window.clearTimeout(copyFeedbackTimerRef.current);
+    }
+    copyFeedbackTimerRef.current = window.setTimeout(() => {
+      setCopyFeedback(null);
+      copyFeedbackTimerRef.current = null;
+    }, 2000);
+  };
 
   const stopStreaming = () => {
     console.log("Stop streaming requested (keeping SSE connection alive).");
@@ -51,11 +101,16 @@ export function ChatBox({ currentUser, session }: ChatBoxProps) {
     if (!userId || !session.id) return;
 
     console.log(`Setting up SSE for userId: ${userId}, sessionId: ${session.id}`);
-    const newEventSource = new EventSource(`http://localhost:8000/api/chat/events/${userId}/${session.id}`);
+    if (!currentUser?.token) return;
+
+    const tokenParam = encodeURIComponent(currentUser.token);
+    const newEventSource = new EventSource(
+      `${apiUrl(`/api/chat/events/${encodeURIComponent(userId)}/${encodeURIComponent(session.id)}`)}?token=${tokenParam}`
+    );
     eventSourceRef.current = newEventSource;
 
     newEventSource.onopen = () => {
-      console.log("SSE connection established to http://localhost:8000.");
+      console.log(`SSE connection established to ${API_BASE_URL}.`);
     };
     
     newEventSource.onmessage = (event) => {
@@ -71,7 +126,7 @@ export function ChatBox({ currentUser, session }: ChatBoxProps) {
                 return;
             }
 
-            setMessages(prevMessages => {
+            updateMessages(prevMessages => {
                 const newMessages = [...prevMessages];
                 const msgIndex = newMessages.findIndex(m => m.id === currentBotMessageId.current);
 
@@ -81,6 +136,10 @@ export function ChatBox({ currentUser, session }: ChatBoxProps) {
 
                 const currentMsg = { ...newMessages[msgIndex] };
                 currentMsg.content = parsedData.content;
+                currentMsg.metadata = {
+                  ...currentMsg.metadata,
+                  citations: getCitations(parsedData),
+                };
                 newMessages[msgIndex] = currentMsg;
                 
                 return newMessages;
@@ -88,7 +147,7 @@ export function ChatBox({ currentUser, session }: ChatBoxProps) {
 
         } catch (error) {
             console.error("Failed to parse SSE message data:", error);
-            setMessages(prev => {
+            updateMessages(prev => {
                 const newMessages = [...prev];
                 const msgIndex = newMessages.findIndex(m => m.id === currentBotMessageId.current);
                 if (msgIndex !== -1) {
@@ -119,10 +178,10 @@ export function ChatBox({ currentUser, session }: ChatBoxProps) {
       }
       handleStreamEnd();
     };
-  }, [userId, session.id]);
+  }, [userId, session.id, currentUser?.token]);
 
   const sendMessage = async (input: string) => {
-    if (!input.trim() || !userId || !session.id) return;
+    if (!input.trim() || !userId || !session.id || !currentUser?.token) return;
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -139,13 +198,16 @@ export function ChatBox({ currentUser, session }: ChatBoxProps) {
     };
     
     currentBotMessageId.current = botMessage.id;
-    setMessages((prevMessages) => [...prevMessages, userMessage, botMessage]);
+    updateMessages((prevMessages) => [...prevMessages, userMessage, botMessage]);
     setIsBotTyping(true);
 
     try {
-      const response = await fetch("http://localhost:8000/api/chat/message", {
+      const response = await fetch(apiUrl("/api/chat/message"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentUser.token}`,
+        },
         body: JSON.stringify({
           content: input,
           type: "TextMessage",
@@ -161,7 +223,7 @@ export function ChatBox({ currentUser, session }: ChatBoxProps) {
       }
     } catch (error) {
       console.error("Error sending message:", error);
-      setMessages(prev => {
+      updateMessages(prev => {
         const newMessages = [...prev];
         const msgIndex = newMessages.findIndex(m => m.id === currentBotMessageId.current);
         if (msgIndex !== -1) {
@@ -174,28 +236,54 @@ export function ChatBox({ currentUser, session }: ChatBoxProps) {
   };
 
   return (
-    <div className="relative w-full h-[calc(100vh-3.5rem)]">
-        <main className="flex flex-col w-full max-w-4xl mx-auto h-full">
-            <div ref={containerRef} className="flex-1 overflow-y-auto hide-scrollbar pr-4 -mr-4 pl-4 -ml-4 pb-10">
-                <Messages messages={messages} isBotTyping={isBotTyping} />
+    <div className="relative h-[calc(100svh-3.5rem)] w-full overflow-hidden">
+        <main className="mx-auto flex h-full w-full flex-col">
+            <div ref={containerRef} className="hide-scrollbar flex-1 overflow-y-auto px-4 pb-44">
+              <div className="mx-auto w-full md:w-[70%]">
+                <Messages
+                  messages={messages}
+                  isBotTyping={isBotTyping}
+                  onCopy={handleCopyFeedback}
+                />
+              </div>
+              {messages.filter(msg => msg.content !== "Connection to the chat service was lost or could not be established.").length === 0 && !isBotTyping && (
+                <div className="mx-auto flex min-h-full w-full items-center justify-center px-6 pb-24 pt-12 md:w-[70%]">
+                  <div className="max-w-2xl text-center">
+                    <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
+                      MCBot
+                    </h1>
+                    <p className="mt-4 text-base leading-7 text-muted-foreground sm:text-lg">
+                      Chat with MCBot to retrieve information from management committee
+                      documents, summarize records, and answer questions grounded in your
+                      uploaded materials.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
-            {showPrompts && messages.filter(msg => msg.content !== "Connection to the chat service was lost or could not be established.").length === 0 && !isBotTyping && (
-            <div className="flex justify-center py-4">
-              <PromptCards
-                onSelect={(promptText) => {
-                  sendMessage(promptText);
-                }}
-              />
+
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-40 bg-gradient-to-t from-background via-background/75 to-transparent" />
+
+            <div className="pointer-events-none absolute inset-x-0 bottom-32 z-30 flex justify-center px-4">
+              {copyFeedback ? (
+                <div className="rounded-full border border-border/80 bg-background/80 px-3 py-1.5 text-sm text-foreground shadow-lg backdrop-blur-md">
+                  {copyFeedback}
+                </div>
+              ) : null}
             </div>
-            )}
-            <ChatInput 
-                onSendMessage={sendMessage}
-                isStreaming={isBotTyping}
-                stopStreaming={stopStreaming}
-            />
-            <p className="text-xs text-muted-foreground py-8 text-center">
-              AI generated responses may be incorrect or misleading. Please verify important information.
-            </p>
+
+            <div className="absolute inset-x-0 bottom-0 z-20 px-4 pb-8 pt-10">
+              <div className="mx-auto w-full md:w-[70%]">
+                <ChatInput 
+                    onSendMessage={sendMessage}
+                    isStreaming={isBotTyping}
+                    stopStreaming={stopStreaming}
+                />
+              </div>
+              <p className="pt-3 text-center text-xs text-muted-foreground">
+                AI generated responses may be incorrect or misleading. Please verify important information.
+              </p>
+            </div>
         </main>
     </div>
   );

@@ -14,15 +14,16 @@ interface ChatInputProps {
 export function ChatInput({ onSendMessage, isStreaming, stopStreaming }: ChatInputProps) {
     const [message, setMessage] = useState("");
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const collapsedHeight = 56;
 
     const adjustHeight = useCallback(() => {
         const textarea = textareaRef.current;
         if (textarea) {
             textarea.style.height = 'auto'; // Reset height
-            const newHeight = Math.max(36, Math.min(textarea.scrollHeight, 200));
+            const newHeight = Math.max(collapsedHeight, Math.min(textarea.scrollHeight, 200));
             textarea.style.height = `${newHeight}px`;
         }
-    }, []);
+    }, [collapsedHeight]);
     
     useEffect(() => {
         adjustHeight();
@@ -36,7 +37,7 @@ export function ChatInput({ onSendMessage, isStreaming, stopStreaming }: ChatInp
         // Reset height after sending
         const textarea = textareaRef.current;
         if(textarea) {
-            textarea.style.height = '36px';
+            textarea.style.height = `${collapsedHeight}px`;
         }
     };
 
@@ -48,8 +49,8 @@ export function ChatInput({ onSendMessage, isStreaming, stopStreaming }: ChatInp
     };
 
     return (
-        <div className="fixed bottom-15 w-full max-w-4xl">
-            <div className="flex items-center gap-2 rounded-full px-4 py-2 shadow-sm bg-opacity-80 backdrop-blur-sm w-full">
+        <div className="mx-auto w-full">
+            <div className="flex w-full items-center gap-3 rounded-[1.9rem] border border-white/20 bg-background/45 px-5 py-3 shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-background/35">
                 <Textarea
                     ref={textareaRef}
                     id="chat-input"
@@ -58,11 +59,17 @@ export function ChatInput({ onSendMessage, isStreaming, stopStreaming }: ChatInp
                     onKeyDown={handleKeyDown}
                     placeholder="Ask me anything..."
                     rows={1}
-                    className="flex-1 items-center !border-none !shadow-none !ring-0 bg-transparent text-sm placeholder:text-muted-foreground px-3 !py-0 !min-h-[36px] leading-[36px] resize-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                    className="flex-1 !border-none !shadow-none !ring-0 bg-transparent px-0 py-3 text-base leading-6 placeholder:text-muted-foreground !min-h-[56px] resize-none focus-visible:ring-0 focus-visible:ring-offset-0"
                     aria-label="Chat message input"
                 />
                 {isStreaming ? (
-                    <Button variant="outline" size="icon" onClick={stopStreaming} aria-label="Stop generating response">
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={stopStreaming}
+                        aria-label="Stop generating response"
+                        className="h-11 w-11 shrink-0 rounded-full self-center"
+                    >
                         <StopIcon size={20} />
                     </Button>
                 ) : (
@@ -72,7 +79,7 @@ export function ChatInput({ onSendMessage, isStreaming, stopStreaming }: ChatInp
                         size="icon"
                         disabled={!message.trim()}
                         aria-label="Send message"
-                        className="bg-[#3A5CCC] hover:bg-[#324EB3] text-white rounded-full"
+                        className="h-11 w-11 shrink-0 self-center rounded-full bg-[#3A5CCC] text-white hover:bg-[#324EB3]"
                     >
                         <ArrowUpIcon size={18} />
                     </Button>
