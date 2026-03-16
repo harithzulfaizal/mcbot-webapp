@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { AppSidebar } from "./components/app-sidebar";
@@ -310,7 +310,7 @@ export default function App() {
     }
   };
 
-  const updateSessionMessages = (sessionId: string, messages: Message[]) => {
+  const updateSessionMessages = useCallback((sessionId: string, messages: Message[]) => {
     setSessions((prevSessions) =>
       prevSessions.map((session) =>
         session.id === sessionId
@@ -322,7 +322,7 @@ export default function App() {
           : session
       )
     );
-  };
+  }, []);
 
   const handleDeleteSession = async (index: number) => {
     if (!currentUser?.canAccessChat) {

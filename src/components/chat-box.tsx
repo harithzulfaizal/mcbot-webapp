@@ -65,12 +65,6 @@ export function ChatBox({ currentUser, session, onSessionMessagesChange }: ChatB
     };
   }, []);
 
-  useEffect(() => {
-    setMessages(session.messages);
-    currentBotMessageId.current = null;
-    setIsBotTyping(false);
-  }, [session.id, session.messages]);
-
   const updateMessages = (
     updater: Message[] | ((currentMessages: Message[]) => Message[])
   ) => {
